@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+    <RadioGroup
+        android:id="@+id/radio_group2"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:background="@color/white"
+        android:gravity="center_horizontal"
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:id="@+id/tcp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            style="@style/radiobutton_style"
+            android:text="TCP Socket" />
+
+        <RadioButton
+            android:id="@+id/udp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            style="@style/radiobutton_style"
+            android:text="UDP Socket" />
+    </RadioGroup>
+
+    <FrameLayout
+        android:id="@+id/socketcontent"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+</LinearLayout>
