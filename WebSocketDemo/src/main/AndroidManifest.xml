@@ -19,7 +19,7 @@
         </activity>
         <service
             android:name=".WebSocketService"
-            android:exported="false"></service>
+            android:exported="false"/>
     </application>
 
 </manifest>

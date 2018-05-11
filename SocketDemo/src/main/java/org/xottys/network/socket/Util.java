@@ -1,9 +1,10 @@
-package org.xottys.network.websocket;
+package org.xottys.network.socket;
 
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.net.wifi.WifiManager;
 import android.preference.PreferenceManager;
 import android.widget.TextView;
 
@@ -17,6 +18,7 @@ public final class Util {
     static  public String getAddr(Context ctx,int addressType) {
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(ctx);
         String str="";
+        String[] urls = url.split(":");
         switch (addressType) {
             case 0:
                 str=sp.getString("httpData", "http://"+url+"login");
@@ -25,10 +27,11 @@ public final class Util {
                 str=sp.getString("httpFile", "http://"+url+"updown");
                 break;
             case 2:
-                str=sp.getString("socketTcp", "http://"+url+"tcp");
+
+                str=sp.getString("socketTcp", "http://"+url+"tcp"+"&8000");
                 break;
             case 3:
-                str=sp.getString("socketUdp", "http://"+url+"udp");
+                str=sp.getString("socketUdp", "http://"+url+"udp"+"&9000"+"&9001");
                 break;
             case 4:
                 str=sp.getString("websocket", "ws://"+url+"websocket");
@@ -122,5 +125,11 @@ public final class Util {
         if (offset > textView.getHeight()) {
             textView.scrollTo(0, offset - textView.getHeight());
         }
+    }
+
+   static public void allowMulticast(Context context){
+        WifiManager wifiManager=(WifiManager)context.getSystemService(Context.WIFI_SERVICE);
+        WifiManager.MulticastLock multicastLock=wifiManager.createMulticastLock("Multicast.test");
+        multicastLock.acquire();
     }
 }

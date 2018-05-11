@@ -45,7 +45,7 @@ public class MainActivity extends Activity {
             //Websocket服务器返回结果UI显示
             String stringFromServer = msg.getData().getString("MSG");
             tv_receive.append(stringFromServer + "\n");
-           refreshLongText(tv_receive);
+             Util.refreshLongText(tv_receive);
             Log.i(TAG, "Websocket收到服务器返回的消息：" + stringFromServer);
             }
             else
@@ -55,7 +55,6 @@ public class MainActivity extends Activity {
     };
 
     //websocket通信地址
-    private WebSocketService.WebSocketServiceBinder webSocketServiceBinder;
     private WebSocketService webSocketService;
     private ServiceConnection conn = new ServiceConnection() {
         //当WebSocketService连接成功时调用该方法
@@ -63,7 +62,7 @@ public class MainActivity extends Activity {
         public void onServiceConnected(ComponentName name
                 , IBinder service) {
             Log.i(TAG, "WebSocket Connected: Success");
-            webSocketServiceBinder = (WebSocketService.WebSocketServiceBinder) service;
+            WebSocketService.WebSocketServiceBinder webSocketServiceBinder = (WebSocketService.WebSocketServiceBinder) service;
             webSocketService = webSocketServiceBinder.getWebSocketService();
             bt_send.setTextColor(0xFFFFFFFF);
             bt_send.setEnabled(true);
@@ -109,13 +108,13 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        bt1 = (Button) findViewById(R.id.bt1);
-        bt2 = (Button) findViewById(R.id.bt2);
-        bt_save = (Button) findViewById(R.id.bt_save);
-        bt_send = (Button) findViewById(R.id.bt_send);
-        tv_receive = (TextView) findViewById(R.id.tv_receive);
-        et_addr = (EditText) findViewById(R.id.et_addr);
-        et_send = (EditText) findViewById(R.id.et_send);
+        bt1 =  findViewById(R.id.bt1);
+        bt2 =  findViewById(R.id.bt2);
+        Button bt_save =  findViewById(R.id.bt_save);
+        bt_send =  findViewById(R.id.bt_send);
+        tv_receive =  findViewById(R.id.tv_receive);
+        et_addr =  findViewById(R.id.et_addr);
+        et_send =  findViewById(R.id.et_send);
 
         bt1.setBackgroundColor(0xbd292f34);
         bt1.setTextColor(0xFFFFFFFF);
@@ -166,7 +165,7 @@ public class MainActivity extends Activity {
         bt_send.setOnClickListener(new Button.OnClickListener() {
             public void onClick(View v) {
                 String msgSend = et_send.getText().toString();
-                if (msgSend != null) {
+                if (!msgSend.equals("")) {
                     //websocket发送信息给服务器
                     webSocketService.sendMessage(msgSend);
                     et_send.setText("");
@@ -182,12 +181,6 @@ public class MainActivity extends Activity {
         });
     }
 
-    void refreshLongText(TextView textView){
-        int offset=textView.getLineCount()*textView.getLineHeight();
-        if(offset>textView.getHeight()){
-            textView.scrollTo(0,offset-textView.getHeight());
-        }
-    }
 }
 
 

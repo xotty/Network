@@ -14,6 +14,7 @@
         <item name="android:layout_weight">1</item>
         <item name="android:button">@null</item><!--去除RadioButton默认带的圆点-->
         <item name="android:gravity">center</item>
-        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/white</item>
+        <item name="android:textSize">18sp</item>
     </style>
 </resources>
