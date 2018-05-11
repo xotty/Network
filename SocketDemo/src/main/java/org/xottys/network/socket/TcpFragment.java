@@ -300,15 +300,16 @@ public class TcpFragment extends Fragment {
                         tcpFragment.setButtonsEnable(tcpFragment.bt_disconnect, tcpFragment.bt_send);
                         tcpFragment.setButtonsDisable(tcpFragment.bt_connect, tcpFragment.bt_start);
                         tcpFragment.tv_receive.append("Tcp Socket连接成功\n");
+                        tcpFragment.isServerStop = false;
                         break;
                     //Socket接收服务器数据
                     case 1:
                         if (msg.obj != null) {
                             tcpFragment.tv_receive.append(msg.obj.toString() + "\n");
                             Util.refreshLongText(tcpFragment.tv_receive);
-                            if (msg.obj.toString().contains("准备关闭Tcp ServerSocket")) {
-                                tcpFragment.isServerStop = true;
-                            }
+//                            if (msg.obj.toString().contains("准备关闭Tcp ServerSocket")) {
+//                                tcpFragment.isServerStop = true;
+//                            }
                         }
                         break;
                     //Tcp服务器已启动，可直接使用
@@ -330,6 +331,7 @@ public class TcpFragment extends Fragment {
                             tcpFragment.setButtonsEnable(tcpFragment.bt_connect);
                             tcpFragment.setButtonsDisable(tcpFragment.bt_disconnect, tcpFragment.bt_send);
                             tcpFragment.tv_receive.append("Tcp Socket客户端主动断开连接\n");
+                            tcpFragment.isServerStop=true;
                         }
                         break;
                     //Socket连接失败
@@ -395,6 +397,7 @@ public class TcpFragment extends Fragment {
     public void onDestroy() {
         willDetroyed=true;
         if(!isServerStop){
+            isServerStop=true;
         tcpServiceBinder.stopTcpService();
         if (getActivity()!=null)
         getActivity().unbindService(conn);}

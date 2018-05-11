@@ -554,4 +554,28 @@ public class HttpURLConnectionDemo {
             return resultBuffer.toString();
         }
     }
+
+
+    /**
+     * @method getSessionID
+     * @description 执行从cookie获取会话sessionID的方法，用于保持与服务器的会话
+     * @param url 远程服务器的URL
+     * */
+    public String getSessionID(URL url){
+        String sessionID;
+        try {
+//            URL url = new URL(actionURL);
+            HttpURLConnection connection = (HttpURLConnection)url.openConnection();
+            String cookieValue = connection.getHeaderField("set-cookie");
+            if(cookieValue != null){
+                sessionID = cookieValue.substring(0, cookieValue.indexOf(";"));
+            }else{
+                sessionID = "";
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            sessionID = "";
+        }
+        return sessionID;
+    }
 }
