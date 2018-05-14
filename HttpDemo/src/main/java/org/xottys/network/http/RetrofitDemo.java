@@ -39,9 +39,13 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
+import java.util.concurrent.TimeUnit;
 
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
+import okhttp3.OkHttpClient;
 import okhttp3.RequestBody;
 import okhttp3.ResponseBody;
 import retrofit2.Call;
@@ -55,13 +59,14 @@ import retrofit2.http.DELETE;
 import retrofit2.http.Field;
 import retrofit2.http.FormUrlEncoded;
 import retrofit2.http.GET;
+import retrofit2.http.HTTP;
 import retrofit2.http.Multipart;
 import retrofit2.http.POST;
 import retrofit2.http.PUT;
 import retrofit2.http.Part;
+import retrofit2.http.Path;
 import retrofit2.http.Query;
-
-import static android.content.ContentValues.TAG;
+import retrofit2.http.Url;
 
 
 interface GetService {
@@ -107,12 +112,17 @@ interface DeleteService {
 }
 
 interface DownloadService {
-    @GET("httpDemo/updownLoad")
+    //BaseUrl将会引入，与updown和filename=？一起组成正式的访问url
+    @GET("updown")
     Call<ResponseBody> downloadFile(@Query("filename") String filename);
+
+    /* 可替换方法，此时BaseUrl将不会引入
+    @GET
+    Call<ResponseBody> downloadFile(@Url String fileUrl);*/
 }
 
 interface UploadService {
-    @PUT("httpDemo/updownLoad")
+    @PUT("updown")
     Call<ResponseBody> uploadFileWithRequestBody(@Query("filename") String filename, @Body RequestBody body);
 
     /**
@@ -121,7 +131,7 @@ interface UploadService {
      * @param multipartBody MultipartBody可能包含多个Part
      * @return 状态信息
      */
-    @POST("httpDemo/updownLoad")
+    @HTTP(method = "DELETE",path = "updown",hasBody = true)
     Call<ResponseBody> uploadFileWithMultiPartBody(@Body MultipartBody multipartBody);
 
     /**
@@ -129,24 +139,31 @@ interface UploadService {
      * @return 状态信息
      */
     @Multipart
-    @POST("httpDemo/updownLoad")
+    @POST("updown")
     Call<ResponseBody> uploadFileWithPart(@Part() MultipartBody.Part part);
 
 
 }
 
 public class RetrofitDemo {
-
+    private static final String TAG = "http";
+    static private String methodName="";
+    static private Message msg = Message.obtain();
+    //设置个性化超时的client，缺省为10s
+    private static final OkHttpClient okHttpClient = new OkHttpClient.Builder().
+            connectTimeout(3, TimeUnit.SECONDS).
+            readTimeout(3, TimeUnit.SECONDS).
+            writeTimeout(5, TimeUnit.SECONDS).build();
     public static String retrofitHttp(String url, final int method, final Handler handler) {
         final String TAG = "HttpDemo";
         Retrofit retrofit;
         Call<String> stringCall = null;
         Call<Person> personCall = null;
-
         String result = "";
         switch (method) {
             //提交Get请求
             case 1:
+
                 retrofit = new Retrofit.Builder()
                         .baseUrl(url)
                         .addConverterFactory(ScalarsConverterFactory.create())
@@ -156,6 +173,7 @@ public class RetrofitDemo {
                 break;
             //提交Post请求
             case 2:
+
                 retrofit = new Retrofit.Builder()
                         .baseUrl(url)
                         .addConverterFactory(ScalarsConverterFactory.create())
@@ -165,6 +183,7 @@ public class RetrofitDemo {
                 break;
             //提交Put请求
             case 3:
+
                 retrofit = new Retrofit.Builder()
                         .baseUrl(url)
                         .addConverterFactory(GsonConverterFactory.create())
@@ -220,7 +239,6 @@ public class RetrofitDemo {
                             @Override
                             public void onResponse(
                                     Call<String> call, Response<String> response) {
-                                Message msg = Message.obtain();
                                 msg.what = method;
                                 msg.obj = response.body();
                                 handler.sendMessage(msg);
@@ -253,7 +271,6 @@ public class RetrofitDemo {
                                     Call<Person> call, Response<Person> response) {
                                 Person person = (Person) response.body();
 
-                                Message msg = Message.obtain();
                                 msg.what = method;
                                 msg.obj = new Gson().toJson(person);
                                 handler.sendMessage(msg);
@@ -278,98 +295,118 @@ public class RetrofitDemo {
     }
 
     //Retrofit下载文件
-    private static void startDownload(String downloadUrl, final String filename, final Handler handler) {
+    public static void startDownload(String downloadUrl, final String filename, final Handler handler) {
 
         //构建Retrofit
         Retrofit retrofit = new Retrofit.Builder()
-                .baseUrl(downloadUrl)
+                .baseUrl(downloadUrl+"/")
                 .addConverterFactory(ScalarsConverterFactory.create())
+                .client(okHttpClient)
                 .build();
         //关联Retrofit
         DownloadService downloadService = retrofit.create(DownloadService.class);
         Call<ResponseBody> dowloadCall = downloadService.downloadFile(filename);
+
+        /*对应可替换方法，url要全部手动注入
+        Call<ResponseBody> dowloadCall = downloadService.downloadFile(downloadUrl+ "?filename=" + filename);*/
+
         //执行Retrofit，响应结果处理与OKHttp基本相同
         dowloadCall.enqueue(new Callback<ResponseBody>() {
             @Override
             public void onResponse(Call<ResponseBody> call, final Response<ResponseBody> response) {
-                File sdDir = null;
-                boolean sdCardExist = Environment.getExternalStorageState()
-                        .equals(Environment.MEDIA_MOUNTED);//判断sd卡是否存在
-                if (sdCardExist) {
-                    sdDir = Environment.getExternalStorageDirectory();//获取跟目录
-                }
-
-                final File file = new File(sdDir.toString() + "/" + filename);
-                InputStream is = null;
-                byte[] buf = new byte[2048];
-                int len = 0;
-                FileOutputStream fos = null;
-                try {
-                    long total = response.body().contentLength();
-                    long current = 0;
-                    is = response.body().byteStream();
-                    fos = new FileOutputStream(file);
-                    while ((len = is.read(buf)) != -1) {
-                        current += len;
-                        fos.write(buf, 0, len);
-                        System.out.println("Retrofit下载了-------> " + current * 100 / total +
-                                "%\n");
-                    }
-                    fos.flush();
-                    Message msg = Message.obtain();
-                    msg.what = 0x05;
-                    msg.obj = "Retrofit下载成功:" + filename;
-                    handler.sendMessage(msg);
-                    Log.e(TAG, "Retrofit下载成功");
-                } catch (IOException e) {
-                    Message msg = Message.obtain();
-                    msg.what = 0x05;
-                    msg.obj = "Retrofit下载失败！";
-                    handler.sendMessage(msg);
-                    Log.e(TAG, e.toString());
-                    Log.e(TAG, "Retrofit下载失败");
-                } finally {
+                Message msg = Message.obtain();
+                String result;
+                msg.what=5;
+                if (!response.isSuccessful()) {
+                    result = "Retrofit服务器连接故障2";
+                    msg.arg1 = 2;
+                    msg.obj = result;
+                    Log.e(TAG, "Retrofit服务器连接故障2");
+                } else {
                     try {
-                        if (is != null) {
-                            is.close();
+                    result = URLDecoder.decode(response.headers().get("result"), "UTF-8");
+                    if (result.equals("下载成功")) {
+                        File sdDir = null;
+                        boolean sdCardExist = Environment.getExternalStorageState()
+                                .equals(Environment.MEDIA_MOUNTED);//判断sd卡是否存在
+                        if (sdCardExist) {
+                            sdDir = Environment.getExternalStorageDirectory();//获取跟目录
                         }
-                        if (fos != null) {
-                            fos.close();
+
+                        final File file = new File(sdDir.toString() + "/" + filename);
+                        InputStream is = null;
+                        byte[] buf = new byte[2048];
+                        int len = 0;
+                        FileOutputStream fos = null;
+
+                            long total = response.body().contentLength();
+                            long current = 0;
+                            is = response.body().byteStream();
+                            fos = new FileOutputStream(file);
+                            while ((len = is.read(buf)) != -1) {
+                                current += len;
+                                fos.write(buf, 0, len);
+                                Log.i(TAG, "Retrofit下载了-------> " + current * 100 / total + "%\n");
+                            }
+                            fos.flush();
+                            msg.arg1 = 0;
+                            msg.obj = "Retrofit"+result + filename;
+                            Log.e(TAG, "Retrofit下载成功");
+
+                        try {
+                                is.close();
+                                fos.close();
+                        } catch (IOException e) {
+                            Log.e(TAG, e.toString());
                         }
-                    } catch (IOException e) {
-                        Log.e(TAG, e.toString());
+                    }else {
+                        //将下载结果发送给UI线程
+                        msg.arg1 = 4;
+                        msg.obj = "Retrofit"+result + ":" + filename;
                     }
+                        } catch (IOException e1) {
+                            e1.printStackTrace();
+                            msg.obj = "Retrofit下载失败2！";
+                            msg.arg1 = 3;
+                            Log.e(TAG, "Retrofit下载失败2");
+                        }
                 }
+                handler.sendMessage(msg);
+
             }
 
             @Override
             public void onFailure(Call<ResponseBody> call, Throwable t) {
                 Message msg = Message.obtain();
-                msg.what = 0x05;
-                msg.obj = "Retrofit下载失败！";
+                msg.what=5;
+                msg.arg1 = 1;
+                msg.obj = "Retrofit服务器连接故障1";
                 handler.sendMessage(msg);
-                Log.e(TAG, "Retrofit下载失败");
+                Log.e(TAG, "Retrofit服务器连接故障1");
                 t.printStackTrace();
             }
         });
     }
 
     //Retrofit上传文件
-    private static void startUpload(final int method, String uploadUrl, String filename, final Handler handler) {
+    public static void startUpload(final int method, String uploadUrl, String filepath, final Handler handler) {
         Call<ResponseBody> uploadCall = null;
-        //将要上传的文件关联到file
-        File sdDir = null;
-        boolean sdCardExist = Environment.getExternalStorageState()
-                .equals(Environment.MEDIA_MOUNTED); //判断sd卡是否存在
-        if (sdCardExist) {
-            sdDir = Environment.getExternalStorageDirectory(); //获取跟目录
-        }
-        final File file = new File(sdDir.toString() + "/" + filename);
+//        //将要上传的文件关联到file
+//        File sdDir = null;
+//        boolean sdCardExist = Environment.getExternalStorageState()
+//                .equals(Environment.MEDIA_MOUNTED); //判断sd卡是否存在
+//        if (sdCardExist) {
+//            sdDir = Environment.getExternalStorageDirectory(); //获取跟目录
+//        }
+//        final File file = new File(sdDir.toString() + "/" + filename);
+        File file = new File(filepath);
+        final String filename = filepath.substring(filepath.lastIndexOf("/") + 1);
 
         //构建Retrofit
         Retrofit retrofit = new Retrofit.Builder()
                 .baseUrl(uploadUrl)
                 .addConverterFactory(ScalarsConverterFactory.create())
+                .client(okHttpClient)
                 .build();
         UploadService uploadService = retrofit.create(UploadService.class);
 
@@ -378,12 +415,14 @@ public class RetrofitDemo {
         RequestBody filebody = RequestBody.create(mediaType, file);
 
         switch (method) {
-            //直接将file构建的requetBody传入接口Call方法
+            //PUT,直接将file构建的requetBody传入接口Call方法
             case 1:
+                methodName="octet-stream";
                 uploadCall = uploadService.uploadFileWithRequestBody(filename, filebody);
                 break;
-            //将file构建的requetBody进一步构建成MultipartBody，然后将其传入接口Call方法
+            //POST,将file构建的requetBody进一步构建成MultipartBody，然后将其传入接口Call方法
             case 2:
+                methodName="multipart(servlet3.0";
                 MultipartBody multipartBody = new MultipartBody.Builder()
                         .setType(MultipartBody.FORM)
                         .addFormDataPart("file", filename, filebody)
@@ -391,8 +430,9 @@ public class RetrofitDemo {
 
                 uploadCall = uploadService.uploadFileWithMultiPartBody(multipartBody);
                 break;
-            //将file构建的requetBody进一步构建成MultipartBody.Part，然后将其传入接口Call方法
+            //DELETE,将file构建的requetBody进一步构建成MultipartBody.Part，然后将其传入接口Call方法
             case 3:
+                methodName="multipart(commons-fileupload";
                 MultipartBody.Part part = MultipartBody.Part.createFormData("file", filename, filebody);
                 uploadCall = uploadService.uploadFileWithPart(part);
                 break;
@@ -401,40 +441,41 @@ public class RetrofitDemo {
         uploadCall.enqueue(new Callback<ResponseBody>() {
             @Override
             public void onResponse(Call<ResponseBody> call, final Response<ResponseBody> response) {
+                String result="";
+                msg = handler.obtainMessage();
+                msg.what=6;
                 //处理服务器正常响应的情况
                 if (response.isSuccessful()) {
-                    String responseString = "";
                     try {
-                        responseString = response.body().string();
+                        result= response.body().string();
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
-
-                    Message msg = Message.obtain();
-                    msg.what = 0x06;
-                    msg.arg1 = method;
-                    msg.obj = responseString;
-                    handler.sendMessage(msg);
-
-                    Log.i(TAG, "Retrofit上传成功，" + responseString);
+                    if (result.equals("上传成功")) {
+                        msg.arg1 = 0;
+                        msg.obj = "Retrofit/" + methodName + result + ":" + filename;
+                        Log.i(TAG, "Retrofit上传成功");
+                    }else {
+                        msg.arg1 = 4;
+                        msg.obj = "Retrofit" + methodName + result + ":" + filename;
+                    }
                 } else {
-                    Message msg = Message.obtain();
-                    msg.what = 0x06;
-                    msg.arg1 = method;
-                    msg.obj = "Retrofit上传失败";
-                    handler.sendMessage(msg);
-                    Log.e(TAG, "Retrofit上传失败");
+                    result = "Retrofit服务器连接故障2";
+                    msg.arg1 = 2;
+                    msg.obj = result;
+                    Log.e(TAG, "Retrofit服务器连接故障2");
                 }
+                handler.sendMessage(msg);
             }
             //处理服务器异常响应的情况
             @Override
             public void onFailure(Call<ResponseBody> call, Throwable t) {
-                Message msg = Message.obtain();
-                msg.what = 0x06;
-                msg.arg1 = method;
-                msg.obj = "Retrofit上传失败";
+                msg = handler.obtainMessage();
+                msg.what=6;
+                msg.arg1 = 1;
+                msg.obj = "Retrofit服务器连接故障1！";
                 handler.sendMessage(msg);
-                Log.e(TAG, "Retrofit上传失败");
+                Log.e(TAG, "Retrofit服务器连接故障1");
                 t.printStackTrace();
             }
         });

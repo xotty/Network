@@ -16,6 +16,7 @@ package org.xottys.network.socket;
 
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.widget.Button;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 
@@ -28,6 +29,7 @@ public class MainActivity extends AppCompatActivity {
         ((RadioButton)findViewById(R.id.udp)).setTextColor(getResources().getColor(R.color.textgrey));
         tcpProcess();
         RadioGroup radio_tcp_udp = findViewById(R.id.radio_tcp_udp);
+
         radio_tcp_udp.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(RadioGroup group, int checkedId) {

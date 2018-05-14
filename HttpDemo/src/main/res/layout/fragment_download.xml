@@ -3,32 +3,53 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:paddingLeft="16dp"
-    android:paddingRight="16dp"
-    android:paddingTop="16dp">
-    <android.support.design.widget.TextInputEditText
-        android:id="@+id/user_name"
+    android:paddingLeft="5dp"
+    android:paddingRight="5dp"
+    android:paddingTop="5dp"
+    android:paddingBottom="5dp">
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="请输入下载文件名"
-        android:imeOptions="actionNext"
-        android:maxLength="20"
-        android:maxLines="1" />
+        android:orientation="horizontal"
+        android:gravity="center_horizontal">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="下载文件名：" />
+
+        <EditText
+            android:id="@+id/edt_filename"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Download Filename"
+            android:inputType="text"
+            android:textSize="16sp"/>
+    </LinearLayout>
 
     <Button
-        android:id="@+id/btn_action"
+        android:id="@+id/btn_download"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
         android:text="下载"
         android:layout_gravity="center_horizontal"
-        android:textColor="@color/colorAccent" />
+        />
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
         android:text="接收服务器返回数据如下：" />
     <TextView
-        android:id="@+id/server_message"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-     />
+        android:id="@+id/txv_servermessage"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginBottom="5dp"
+        android:background="@color/dkcolor"
+        android:fadeScrollbars="false"
+        android:scrollbars="vertical"
+        android:singleLine="false"
+        android:textColor="@android:color/primary_text_dark"
+        android:textSize="16sp" />
 </LinearLayout>

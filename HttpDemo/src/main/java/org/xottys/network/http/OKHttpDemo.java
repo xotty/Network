@@ -37,10 +37,12 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URLDecoder;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
 import okhttp3.FormBody;
+import okhttp3.Headers;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
@@ -49,9 +51,10 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 
 public class OKHttpDemo {
-    private static final String TAG = "OKHttpDemo";
+    private static final String TAG = "http";
     private static OkHttpClient mOkHttpClient;
-
+    static private Message msg = Message.obtain();
+    static private String methodName="";
     //用OKHttp访问服务器，同步接收服务器响应信息
     public static String syncHttp(String url, int method) {
         //创建OkHttpClient，设置
@@ -193,95 +196,111 @@ public class OKHttpDemo {
 
     //okhttp文件下载
     public static void okHttpDownload(String url, final String filename, final Handler handler) {
+        mOkHttpClient = new OkHttpClient();
         //用GET传递文件名方式访问服务器
         final Request request = new Request.Builder().url(url + "?filename=" + filename).build();
         final Call call = mOkHttpClient.newCall(request);
+        msg.what = 0x05;
         call.enqueue(new okhttp3.Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                Message msg = Message.obtain();
-                msg.what = 0x05;
-                msg.obj = "服务器访问异常,OKHttp下载失败：";
+                msg.arg1 = 1;
+                msg.obj = "OKHttp服务器连接故障1！";
                 handler.sendMessage(msg);
-                Log.e(TAG, "服务器访问异常OKHttp下载失败");
+                Log.e(TAG, "OKHttp服务器连接故障1");
                 e.printStackTrace();
             }
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
-                //将要下载的文件定义到SDcard中
-                File sdDir = null;
-                boolean sdCardExist = Environment.getExternalStorageState()
-                        .equals(Environment.MEDIA_MOUNTED);//判断sd卡是否存在
-                mOkHttpClient = new OkHttpClient();
-                if (sdCardExist) {
-                    sdDir = Environment.getExternalStorageDirectory();//获取跟目录
-                }
-                final File file = new File(sdDir.toString() + "/" + filename);
-
-                //从服务器获取response，读取其body().byteStream(),将其以文件输出流形式写到上面定义的文件中去
-                InputStream is = null;
-                byte[] buf = new byte[2048];
-                int len = 0;
-                FileOutputStream fos = null;
-                try {
-                    long total = response.body().contentLength();
-                    long current = 0;
-                    is = response.body().byteStream();
-                    fos = new FileOutputStream(file);
-                    while ((len = is.read(buf)) != -1) {
-                        current += len;
-                        fos.write(buf, 0, len);
-                        System.out.println("OKHttp下载了-------> " + current * 100 / total +
-                                "%\n");
-                    }
-                    fos.flush();
-                    //服务器返回信息发送给UI线程
-                    Message msg = Message.obtain();
-                    msg.what = 0x05;
-                    msg.obj = "OKHttp下载成功：" + filename;
-                    handler.sendMessage(msg);
-
-                    Log.i(TAG, "OKHttp下载成功");
-                } catch (IOException e) {
-                    Message msg = Message.obtain();
-                    msg.what = 0x05;
-                    msg.obj = "服务器数据解析异常,OKHttp下载失败：";
-                    handler.sendMessage(msg);
-                    Log.e(TAG, "服务器数据解析异常,OKHttp下载失败");
-                    e.printStackTrace();
-                } finally {
-                    try {
-                        if (is != null) {
-                            is.close();
+                String result;
+                if (!response.isSuccessful()) {
+                    result = "OKHTTP服务器连接故障2";
+                    msg.arg1 = 2;
+                    msg.obj = result;
+                    Log.e(TAG, "OKHTTP服务器连接故障2");
+                } else {
+                    result = URLDecoder.decode(response.header("result"), "UTF-8");
+                    if (result.equals("下载成功")) {
+                        //将要下载的文件定义到SDcard中
+                        File sdDir = null;
+                        boolean sdCardExist = Environment.getExternalStorageState()
+                                .equals(Environment.MEDIA_MOUNTED);//判断sd卡是否存在
+                        mOkHttpClient = new OkHttpClient();
+                        if (sdCardExist) {
+                            sdDir = Environment.getExternalStorageDirectory();//获取跟目录
                         }
-                        if (fos != null) {
-                            fos.close();
+                        final File file = new File(sdDir.toString() + "/" + filename);
+
+                        //从服务器获取response，读取其body().byteStream(),将其以文件输出流形式写到上面定义的文件中去
+                        InputStream is = null;
+                        byte[] buf = new byte[2048];
+                        int len = 0;
+                        FileOutputStream fos = null;
+                        try {
+                            long total = response.body().contentLength();
+                            long current = 0;
+                            is = response.body().byteStream();
+                            fos = new FileOutputStream(file);
+                            while ((len = is.read(buf)) != -1) {
+                                current += len;
+                                fos.write(buf, 0, len);
+                                Log.i(TAG, "OKHttp下载了-------> " + current * 100 / total + "%\n");
+                            }
+                            fos.flush();
+                            //服务器返回信息发送给UI线程
+                            msg.arg1 = 0;
+                            msg.obj = "OKHTTP"+result + ":"  + filename;
+                            Log.i(TAG, "OKHTTP下载成功");
+
+                        } catch (IOException e) {
+                            msg.arg1 = 3;
+                            msg.obj = "OKHTTP服务器数据解析异常，下载失败";
+                            Log.e(TAG, "OKHTTP服务器数据解析异常,下载失败");
+                            e.printStackTrace();
+                        } finally {
+                            try {
+                                if (is != null) {
+                                    is.close();
+                                }
+                                if (fos != null) {
+                                    fos.close();
+                                }
+                            } catch (IOException e) {
+                                Log.e(TAG, e.toString());
+                            }
                         }
-                    } catch (IOException e) {
-                        Log.e(TAG, e.toString());
+                    } else {
+                        //将下载结果发送给UI线程
+                        msg.arg1 = 4;
+                        msg.obj = "OKHTTP"+result + ":" + filename;
                     }
                 }
+                handler.sendMessage(msg);
             }
         });
     }
 
-    //okhttp文件上传
-    public static void okHttpUpload(final int method, String url, String filename, final Handler handler) {
+    //okhttp文件上传,method=1:stream方式   2：multipart（servlet3.0）  3:multipart（commons-fileupload）
+    public static void okHttpUpload(final int method, String url, String filepath, final Handler handler) {
         mOkHttpClient = new OkHttpClient.Builder()
-                .connectTimeout(120, TimeUnit.SECONDS)
+                .connectTimeout(3, TimeUnit.SECONDS)
+                .readTimeout(3, TimeUnit.SECONDS)
                 .build();
+//        Message msg = Message.obtain();
+           msg.what = 0x06;
 
-        //将要上传的文件关联到file
-        File sdDir = null;
-        boolean sdCardExist = Environment.getExternalStorageState()
-                .equals(Environment.MEDIA_MOUNTED);//判断sd卡是否存在
-
-        if (sdCardExist) {
-            sdDir = Environment.getExternalStorageDirectory();//获取跟目录
-        }
-        File file = new File(sdDir.toString() + "/" + filename);
-
+//        //将要上传的文件关联到file
+//        File sdDir = null;
+//        boolean sdCardExist = Environment.getExternalStorageState()
+//                .equals(Environment.MEDIA_MOUNTED);//判断sd卡是否存在
+//
+//        if (sdCardExist) {
+//            sdDir = Environment.getExternalStorageDirectory();//获取跟目录
+//        }
+//        File file = new File(sdDir.toString() + "/" + filename);
+        File file = new File(filepath);
+        final String filename = filepath.substring(filepath.lastIndexOf("/") + 1);
         //用上述file创建RequestBody
         final MediaType MEDIA_OBJECT_STREAM = MediaType.parse("application/octet-stream");
         RequestBody filebody = RequestBody.create(MEDIA_OBJECT_STREAM, file);
@@ -289,11 +308,13 @@ public class OKHttpDemo {
         //用上述RequestBodye创建Request
         Request request = null;
         if (method == 1) {
+            methodName="octet-stream";
             request = new Request.Builder()
                     .url(url + "?filename=" + filename)
                     .put(filebody)
                     .build();
-        } else if (method == 2) {
+        } else if (method == 3) {
+            methodName="multipart(commons-fileupload";
             MultipartBody body = new MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
                     .addFormDataPart("file", filename, filebody)
@@ -302,8 +323,16 @@ public class OKHttpDemo {
                     .url(url)
                     .post(body)
                     .build();
-        } else {
-            return;
+        } else if (method == 2) {
+            methodName="multipart(servlet3.0";
+            MultipartBody body = new MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("file", filename, filebody)
+                    .build();
+            request = new Request.Builder()
+                    .url(url)
+                    .delete(body)
+                    .build();
         }
         //发送服务器访问请求
         final Call call = mOkHttpClient.newCall(request);
@@ -311,36 +340,42 @@ public class OKHttpDemo {
             //处理服务器无响应的情况
             @Override
             public void onFailure(Call call, IOException e) {
-                Message msg = Message.obtain();
-                msg.what = 0x06;
-                msg.arg1 = method;
-                msg.obj = "服务器访问异常,OKHttp上传失败";
+                msg = handler.obtainMessage();
+                msg.what=6;
+                msg.arg1 = 1;
+                msg.obj = "OKHttp服务器连接故障1！";
                 handler.sendMessage(msg);
-                Log.e(TAG, "服务器访问异常,OKHttp上传失败");
+                Log.e(TAG, "OKHttp服务器连接故障1");
                 e.printStackTrace();
             }
 
             //处理服务器有响应的情况
             @Override
             public void onResponse(Call call, Response response) throws IOException {
+                String result;
+                msg = handler.obtainMessage();
+                msg.what=6;
                 //处理服务器响应成功的情况
                 if (response.isSuccessful()) {
-                    String responseString = response.body().string();
-                    Message msg = Message.obtain();
-                    msg.what = 0x06;
-                    msg.arg1 = method;
-                    msg.obj = responseString;
-                    handler.sendMessage(msg);
-                    Log.i(TAG, "OKHttp上传成功," + responseString);
+                    result = response.body().string();
+                    if (result.equals("上传成功")) {
+                        msg.arg1 = 0;
+                        msg.obj = "OKHTTP/" +methodName+ result + ":" + filename;
+                        Log.i(TAG, "OKHTTP上传成功");
+                    }
+                    else{
+                            //将下载结果发送给UI线程
+                            msg.arg1 = 4;
+                            msg.obj = "OKHTTP"+methodName + result + ":" + filename;
+                        }
                   //处理服务器响应失败的情况
                 } else {
-                    Message msg = Message.obtain();
-                    msg.what = 0x06;
-                    msg.arg1 = method;
-                    msg.obj = "服务器响应失败,OKHttp上传失败";
-                    handler.sendMessage(msg);
-                    Log.e(TAG, "服务器响应失败,OKHttp上传失败");
+                        result = "OKHTTP服务器连接故障2";
+                        msg.arg1 = 2;
+                        msg.obj = result;
+                        Log.e(TAG, "OKHTTP服务器连接故障2");
                 }
+                handler.sendMessage(msg);
             }
         });
     }

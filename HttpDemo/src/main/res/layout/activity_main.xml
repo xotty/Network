@@ -1,82 +1,88 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical">
     <RadioGroup
-        android:id="@+id/radio_group1"
+        android:id="@+id/rdg_actiontype"
         android:layout_width="match_parent"
         android:layout_height="50dp"
         android:background="@android:color/darker_gray"
         android:orientation="horizontal">
 
         <RadioButton
-            android:id="@+id/data"
-            style="@style/radiobutton_style"
+            android:id="@+id/rdo_data"
+            style="@style/radiobutton_style1"
             android:checked="true"
             android:text="收发数据" />
 
         <RadioButton
-            android:id="@+id/download"
-            style="@style/radiobutton_style"
+            android:id="@+id/rdo_download"
+            style="@style/radiobutton_style1"
             android:text="文件下载" />
 
         <RadioButton
-            android:id="@+id/upload"
-            style="@style/radiobutton_style"
+            android:id="@+id/rdo_upload"
+            style="@style/radiobutton_style1"
             android:text="文件上传" />
     </RadioGroup>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="URL：" />
+        android:orientation="horizontal"
+        android:gravity="center_horizontal"
+        android:focusable="true"
+        android:focusableInTouchMode="true">
 
         <EditText
-            android:layout_width="match_parent"
+            android:id="@+id/edt_url"
+            android:layout_width="280dp"
             android:layout_height="wrap_content"
             android:hint="url should be here!"
-            android:inputType="text"/>
+            android:inputType="textUri"
+            android:textSize="16sp"/>
+        <Button
+            android:id="@+id/btn_save"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Save"
+            />
+
     </LinearLayout>
 
     <RadioGroup
-        android:id="@+id/radio_group2"
+        android:id="@+id/rdg_httptype"
         android:layout_width="match_parent"
-        android:layout_height="40dp"
+        android:layout_height="wrap_content"
         android:background="@color/white"
-        android:gravity="center_horizontal"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        >
 
         <RadioButton
-            android:id="@+id/urlconnection"
+            android:id="@+id/rdo_urlconnection"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:checked="true"
             android:text="HttpUrlConnection" />
 
         <RadioButton
-            android:id="@+id/okhttp"
+            android:id="@+id/rdo_okhttp"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="20dp"
+            android:layout_marginStart="10dp"
             android:text="OKHttp" />
 
         <RadioButton
-            android:id="@+id/retrofit"
+            android:id="@+id/rdo_retrofit"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="20dp"
+            android:layout_marginStart="10dp"
             android:text="Retrofit" />
     </RadioGroup>
 
     <FrameLayout
-        android:id="@+id/httpcontent"
+        android:id="@+id/fml_httpcontent"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 </LinearLayout>

@@ -1,10 +1,15 @@
 <resources>
-
     <!-- Base application theme. -->
-    <style name="AppTheme" parent="android:Theme.Material.Light.DarkActionBar">
+    <style name="AppTheme" parent="Base.AppTheme">
         <!-- Customize your theme here. -->
     </style>
-    <style name="radiobutton_style">
+    <!-- Base application theme. -->
+    <style name="Base.AppTheme" parent="Theme.AppCompat.Light">
+        <item name="colorPrimary">#673AB7</item>
+        <item name="colorPrimaryDark">#512DA8</item>
+        <item name="colorAccent">#FF4081</item>
+    </style>
+    <style name="radiobutton_style1">
         <item name="android:layout_width">0dp</item>
         <item name="android:padding">3dp</item>
         <item name="android:layout_height">match_parent</item>
@@ -12,5 +17,19 @@
         <item name="android:button">@null</item><!--去除RadioButton默认带的圆点-->
         <item name="android:gravity">center</item>
         <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/radiobutton_color</item>
+    </style>
+
+    <style name="radiobutton_style2">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:padding">2dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:button">@null</item><!--去除RadioButton默认带的圆点-->
+        <item name="android:gravity">center</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:layout_marginStart">8dp</item>
+        <item name="android:layout_marginEnd">8dp</item>
+        <item name="android:textColor">@color/radiobutton_color</item>
     </style>
 </resources>

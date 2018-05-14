@@ -4,53 +4,90 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:paddingLeft="16dp"
-    android:paddingRight="16dp"
-    android:paddingTop="16dp">
-    <LinearLayout
+    android:paddingLeft="5dp"
+    android:paddingRight="5dp"
+    android:paddingTop="5dp"
+    android:paddingBottom="5dp">
+
+    <!--<LinearLayout-->
+        <!--android:layout_width="match_parent"-->
+        <!--android:layout_height="wrap_content"-->
+        <!--android:gravity="center_horizontal"-->
+        <!--android:orientation="horizontal">-->
+        <!--<Button-->
+            <!--android:id="@+id/btn_get"-->
+            <!--android:layout_width="wrap_content"-->
+            <!--android:layout_height="wrap_content"-->
+            <!--android:text="GET" />-->
+
+        <!--<Button-->
+            <!--android:id="@+id/btn_post"-->
+            <!--android:layout_width="wrap_content"-->
+            <!--android:layout_height="wrap_content"-->
+            <!--android:text="POST" />-->
+
+        <!--<Button-->
+            <!--android:id="@+id/btn_put"-->
+            <!--android:layout_width="wrap_content"-->
+            <!--android:layout_height="wrap_content"-->
+            <!--android:text="PUT" />-->
+
+        <!--<Button-->
+            <!--android:id="@+id/btn_delete"-->
+            <!--android:layout_width="wrap_content"-->
+            <!--android:layout_height="wrap_content"-->
+            <!--android:text="DELETE" />-->
+    <!--</LinearLayout>-->
+    <RadioGroup
+        android:id="@+id/rdg_http"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_horizontal">
-    <Button
-        android:id="@+id/btn_get"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="GET"
-        android:textColor="@color/colorAccent" />
-        <Button
-            android:id="@+id/btn_post"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+        android:layout_height="50dp"
+
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:id="@+id/rdo_get"
+            style="@style/radiobutton_style2"
+            android:checked="true"
+            android:text="GET"
+            android:background="@android:color/darker_gray"/>
+
+        <RadioButton
+            android:id="@+id/rdo_post"
+            style="@style/radiobutton_style2"
             android:text="POST"
-            android:textColor="@color/colorAccent" />
-        <Button
-            android:id="@+id/btn_put"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="PUT"
-            android:textColor="@color/colorAccent" />
-        <Button
-            android:id="@+id/btn_delete"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="DELETE"
-            android:textColor="@color/colorAccent" />
-    </LinearLayout>
+            android:background="@android:color/darker_gray"/>
 
-    <android.support.design.widget.TextInputEditText
-        android:id="@+id/user_name"
+        <RadioButton
+            android:id="@+id/rdo_put"
+            style="@style/radiobutton_style2"
+            android:text="PUT"
+            android:background="@android:color/darker_gray"/>
+
+        <RadioButton
+            android:id="@+id/rdo_delete"
+            style="@style/radiobutton_style2"
+            android:text="DELETE"
+            android:background="@android:color/darker_gray"/>
+    </RadioGroup>
+    <android.support.design.widget.TextInputLayout
+        android:id="@+id/txi_inputusername"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="@string/login_user_name_hint"
-        android:imeOptions="actionNext"
-        android:maxLength="20"
-        android:maxLines="1" />
+        app:counterMaxLength="60">
 
-    <!--密码明文和秘闻显示切换按钮设置passwordToggleEnabled-->
-    <!--一AutoCompleteTextView-->
+        <AutoCompleteTextView
+            android:id="@+id/txv_username"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:hint="@string/login_user_name_hint"
+            android:imeOptions="actionDone"
+            android:maxLines="1" />
+    </android.support.design.widget.TextInputLayout>
+
     <android.support.design.widget.TextInputLayout
-        android:id="@+id/input_password"
+        android:id="@+id/txi_inputpassword"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         app:counterEnabled="true"
@@ -58,7 +95,7 @@
         app:passwordToggleEnabled="true">
 
         <AutoCompleteTextView
-            android:id="@+id/tv_password"
+            android:id="@+id/txv_password"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="@string/login_user_name_password"
@@ -66,23 +103,30 @@
             android:imeActionLabel="@string/action_sign_in"
             android:imeOptions="actionDone"
             android:inputType="textPassword"
-            android:maxLength="20"
             android:maxLines="1" />
     </android.support.design.widget.TextInputLayout>
+
     <Button
-        android:id="@+id/btn_send"
+        android:id="@+id/btn_action"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="登录"
         android:layout_gravity="center_horizontal"
-        android:textColor="@color/colorAccent" />
+        android:text="登录" />
+
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
         android:text="接收服务器返回数据如下：" />
+
     <TextView
-        android:id="@+id/server_message"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        />
+        android:id="@+id/txv_servermessage"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/dkcolor"
+        android:fadeScrollbars="false"
+        android:scrollbars="vertical"
+        android:singleLine="false"
+        android:textColor="@android:color/primary_text_dark"
+        android:textSize="16sp" />
 </LinearLayout>
