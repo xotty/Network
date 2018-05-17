@@ -9,35 +9,6 @@
     android:paddingTop="5dp"
     android:paddingBottom="5dp">
 
-    <!--<LinearLayout-->
-        <!--android:layout_width="match_parent"-->
-        <!--android:layout_height="wrap_content"-->
-        <!--android:gravity="center_horizontal"-->
-        <!--android:orientation="horizontal">-->
-        <!--<Button-->
-            <!--android:id="@+id/btn_get"-->
-            <!--android:layout_width="wrap_content"-->
-            <!--android:layout_height="wrap_content"-->
-            <!--android:text="GET" />-->
-
-        <!--<Button-->
-            <!--android:id="@+id/btn_post"-->
-            <!--android:layout_width="wrap_content"-->
-            <!--android:layout_height="wrap_content"-->
-            <!--android:text="POST" />-->
-
-        <!--<Button-->
-            <!--android:id="@+id/btn_put"-->
-            <!--android:layout_width="wrap_content"-->
-            <!--android:layout_height="wrap_content"-->
-            <!--android:text="PUT" />-->
-
-        <!--<Button-->
-            <!--android:id="@+id/btn_delete"-->
-            <!--android:layout_width="wrap_content"-->
-            <!--android:layout_height="wrap_content"-->
-            <!--android:text="DELETE" />-->
-    <!--</LinearLayout>-->
     <RadioGroup
         android:id="@+id/rdg_http"
         android:layout_width="match_parent"
@@ -77,7 +48,7 @@
         app:counterMaxLength="60">
 
         <AutoCompleteTextView
-            android:id="@+id/txv_username"
+            android:id="@+id/edt_username"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
@@ -95,7 +66,7 @@
         app:passwordToggleEnabled="true">
 
         <AutoCompleteTextView
-            android:id="@+id/txv_password"
+            android:id="@+id/edt_password"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="@string/login_user_name_password"

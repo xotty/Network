@@ -1,12 +1,12 @@
 /**
- * OKHttp3的各种访问方式：GET、POST、PUT、DELETE的共同流程如下：
+ * OKHttp3是一种常用的同步/异步访问Http服务器的第三方框架，支持各种访问方式：GET、POST、PUT、DELETE的共同流程如下：
  * 1)OkHttpClient okHttpClient=new OkHttpClient()
  * 2)生成url、请求header和请求body的内容
  * 3)构造请求，request = new Request.Builder()
- *                      .url(url)
- *                      .addHeader("Charsert", "UTF-8")
- *                      .post(body)
- *                      .build();
+ * .url(url)
+ * .addHeader("Charsert", "UTF-8")
+ * .post(body)
+ * .build();
  * 4）发送访问请求给服务器并接收服务器响应
  * Call call = mOkHttpClient.newCall(request);
  * 同步：response = call.execute();
@@ -33,11 +33,18 @@ import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.SocketTimeoutException;
 import java.net.URLDecoder;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
@@ -54,14 +61,16 @@ public class OKHttpDemo {
     private static final String TAG = "http";
     private static OkHttpClient mOkHttpClient;
     static private Message msg = Message.obtain();
-    static private String methodName="";
-    //用OKHttp访问服务器，同步接收服务器响应信息
-    public static String syncHttp(String url, int method) {
+    static private String methodName = "";
+
+    //用OKHttp访问服务器，同步或异步接收服务器响应信息
+    public static String okHttp(final int method, String url, String param, final Handler handler) {
         //创建OkHttpClient，设置
         // mOkHttpClient = new OkHttpClient();
+        String result = "", resultCode, resultMsg = "";
         mOkHttpClient = new OkHttpClient.Builder()
-                .readTimeout(10, TimeUnit.SECONDS)//设置读超时时间
-                .writeTimeout(20, TimeUnit.SECONDS)//设置写超时时间
+                .readTimeout(3, TimeUnit.SECONDS)//设置读超时时间
+                .writeTimeout(3, TimeUnit.SECONDS)//设置写超时时间
                 .connectTimeout(3, TimeUnit.SECONDS)//设置连接超时时间
                 .build();
         Request request = null;
@@ -70,129 +79,156 @@ public class OKHttpDemo {
 
         //创建请求Request，其中包含url、访问方式、header和body内容
         switch (method) {
-            //请求参数封装在url里
+            //GET:请求参数封装在url里
             case 1:
+                String realUrl = url + "?" + param;
                 request = new Request.Builder()
-                        .url(url)
+                        .url(realUrl)
                         .build();
                 break;
-            //请求参数以formEncoding方式封装在body里
+            //POST:请求参数以formEncoding方式封装在body里
             case 2:
+                HashMap<String, String> accounts = Util.decodeUrlQueryString(param);
                 body = new FormBody.Builder()
-                        .add("name", "李四")
-                        .add("age", "20")
+                        .add("user", accounts.get("user"))
+                        .add("password", accounts.get("password"))
                         .build();
                 request = new Request.Builder()
                         .url(url)
                         .post(body)
                         .build();
                 break;
-            //请求参数以json方式封装在body里
+            //PUT:请求参数以json方式封装在body里
             case 3:
-                MediaType JsonType = MediaType.parse("application/json");
-                body = RequestBody.create(JsonType, "{'name':'王五','age':'25'}");
+                MediaType JsonType = MediaType.parse("application/json;charset=utf-8");
+                body = RequestBody.create(JsonType, param);
                 request = new Request.Builder()
                         .url(url)
                         .put(body)
                         .build();
                 break;
-            //请求参数封装在url里
+            //DELETE:请求参数封装在url里
             case 4:
+                MediaType XMLType = MediaType.parse("application/xml;charset=utf-8");
+                body = RequestBody.create(XMLType, param);
+
                 request = new Request.Builder()
                         .url(url)
-                        .delete()
+                        .delete(body)
                         .build();
                 break;
         }
-        //发送请求，同步获取服务器响应
-        try {
-            Call call = mOkHttpClient.newCall(request);
-            mResponse = call.execute();
-            if (mResponse.isSuccessful()) {
-                if (method == 3) {
-                    Log.i(TAG, "syncHttp: " + mResponse.body().contentType());
-                    return mResponse.body().string();
+        Call call = mOkHttpClient.newCall(request);
+        if (handler == null) {
+            //发送请求，同步获取服务器响应
+            try {
+                mResponse = call.execute();
+                if (mResponse.isSuccessful()) {
+                    result = mResponse.body().string();
+                    if (method == 3) {
+                        try {
+                            JSONObject jsonObject = new JSONObject(result);
+                            resultCode = jsonObject.getString("code");
+                            resultMsg = jsonObject.getString("message");
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+                        resultMsg = resultMsg + "\n" + result;
+                    } else if (method == 4) {
+                        InputStream in = new ByteArrayInputStream(result.getBytes("UTF-8"));
+                        ArrayList<HashMap> results = Util.readxmlByDom(in);
+                        if (results.size() != 0) {
+                            for (HashMap rs : results) {
+                                result = rs.get("message").toString();
+                            }
+                        }
+                        resultMsg = result + Util.xmlString;
+                    } else
+                        resultMsg = result;
                 } else {
-                    return mResponse.body().string();
+                    resultMsg = "OKHTTP服务器连接故障2";
                 }
+            } catch (IOException e) {
+                resultMsg = "OKHttp服务器连接故障1";
+                e.printStackTrace();
             }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return "";
-    }
+            Log.i(TAG, "syncHttp: " + resultMsg);
+        } else {
+            //异步接收服务器响应信息
+            call.enqueue(new okhttp3.Callback() {
 
-    //用OKHttp访问服务器，异步接收服务器响应信息
-    public static void asyncHttp(String url, final int method, final Handler handler) {
-        mOkHttpClient = new OkHttpClient();
-        Request request = null;
-        RequestBody body = null;
-
-        switch (method) {
-            case 1:
-                request = new Request.Builder()
-                        .url(url)
-                        .build();
-                break;
-            case 2:
-                body = new FormBody.Builder()
-                        .add("name", "李四")
-                        .add("age", "32")
-                        .build();
-                request = new Request.Builder()
-                        .url(url)
-                        .post(body)
-                        .build();
-                break;
-            case 3:
-                MediaType JsonType = MediaType.parse("application/json");
-                body = RequestBody.create(JsonType, "{'name':'王五','age':'25'}");
-                request = new Request.Builder()
-                        .url(url)
-                        .put(body)
-                        .build();
-                break;
-            case 4:
-                request = new Request.Builder()
-                        .url(url)
-                        .delete()
-                        .build();
-                break;
-        }
-
-        Call mcall = mOkHttpClient.newCall(request);
-        //异步接收服务器响应信息
-        mcall.enqueue(new okhttp3.Callback() {
-
-            //访问失败返回的信息
-            @Override
-            public void onFailure(Call call, IOException e) {
-                Log.e(TAG, "OKHttp服务器访问失败");
-            }
-
-            //访问成功返回的信息
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                String str;
-                if (null != response.cacheResponse()) {
-                    str = response.cacheResponse().toString();
-                    Log.i(TAG, "缓存获取---" + str);
-                } else {
-
-                    str = response.networkResponse().toString();
-                    Log.i(TAG, "服务器获取---" + str + "--" + method);
+                //访问失败返回的信息
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    Message msg = Message.obtain();
+                    msg.what = 1;
+                    msg.arg1 = 1;
+                    msg.obj = "Retrofit服务器连接故障1";
+                    handler.sendMessage(msg);
+                    Log.e(TAG, "Retrofit服务器连接故障1");
+                    e.printStackTrace();
                 }
 
-                //服务器返回信息发送给UI线程
-                Message msg = Message.obtain();
-                msg.what = method;
-                msg.obj = response.body().string();
-                handler.sendMessage(msg);
+                //访问成功返回的信息
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    String result = "", resultCode, resultMsg = "";
+                    //服务器返回信息发送给UI线程
+                    Message msg = Message.obtain();
+                    msg.what = 1;
+                    if (!response.isSuccessful()) {
+                        result = "Retrofit服务器连接故障2";
+                        msg.arg1 = 2;
+                        Log.e(TAG, "Retrofit服务器连接故障2");
+                    } else {
+                        switch (method) {
+                            //返回普通的String
+                            case 1:
+                            case 2:
+                                String str;
+                                if (null != response.cacheResponse()) {
+                                    str = response.cacheResponse().toString();
+                                    Log.i(TAG, "缓存获取---" + str);
+                                } else {
 
-                Log.i(TAG, "OKHttp服务器访问成功");
-            }
-        });
+                                    str = response.networkResponse().toString();
+                                    Log.i(TAG, "服务器获取---" + str + "--" + method);
+                                }
+                                result = response.body().toString();
+                                break;
+                            case 3:
+                                try {
+                                    JSONObject jsonObject = new JSONObject(result);
+                                    resultCode = jsonObject.getString("code");
+                                    resultMsg = jsonObject.getString("message");
+                                } catch (JSONException e) {
+                                    e.printStackTrace();
+                                }
+                                result = resultMsg + "\n" + result;
+                                break;
+                            case 4:
+                                InputStream in = new ByteArrayInputStream(result.getBytes("UTF-8"));
+                                ArrayList<HashMap> results = Util.readxmlByDom(in);
+                                if (results.size() != 0) {
+                                    for (HashMap rs : results) {
+                                        result = rs.get("message").toString();
+                                    }
+                                }
+                                result = result + Util.xmlString;
+                                break;
+                        }
+                        msg.arg1 = 0;
+                    }
+                    msg.obj = result;
+                    handler.sendMessage(msg);
+                    Log.i(TAG, "OKHttp服务器访问返回：" + result);
+                }
+            });
+
+        }
+        return resultMsg;
     }
+
 
     //okhttp文件下载
     public static void okHttpDownload(String url, final String filename, final Handler handler) {
@@ -250,7 +286,7 @@ public class OKHttpDemo {
                             fos.flush();
                             //服务器返回信息发送给UI线程
                             msg.arg1 = 0;
-                            msg.obj = "OKHTTP"+result + ":"  + filename;
+                            msg.obj = "OKHTTP" + result + ":" + filename;
                             Log.i(TAG, "OKHTTP下载成功");
 
                         } catch (IOException e) {
@@ -273,7 +309,7 @@ public class OKHttpDemo {
                     } else {
                         //将下载结果发送给UI线程
                         msg.arg1 = 4;
-                        msg.obj = "OKHTTP"+result + ":" + filename;
+                        msg.obj = "OKHTTP" + result + ":" + filename;
                     }
                 }
                 handler.sendMessage(msg);
@@ -288,7 +324,7 @@ public class OKHttpDemo {
                 .readTimeout(3, TimeUnit.SECONDS)
                 .build();
 //        Message msg = Message.obtain();
-           msg.what = 0x06;
+        msg.what = 0x06;
 
 //        //将要上传的文件关联到file
 //        File sdDir = null;
@@ -308,13 +344,13 @@ public class OKHttpDemo {
         //用上述RequestBodye创建Request
         Request request = null;
         if (method == 1) {
-            methodName="octet-stream";
+            methodName = "octet-stream";
             request = new Request.Builder()
                     .url(url + "?filename=" + filename)
                     .put(filebody)
                     .build();
         } else if (method == 3) {
-            methodName="multipart(commons-fileupload";
+            methodName = "multipart(commons-fileupload";
             MultipartBody body = new MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
                     .addFormDataPart("file", filename, filebody)
@@ -324,7 +360,7 @@ public class OKHttpDemo {
                     .post(body)
                     .build();
         } else if (method == 2) {
-            methodName="multipart(servlet3.0";
+            methodName = "multipart(servlet3.0";
             MultipartBody body = new MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
                     .addFormDataPart("file", filename, filebody)
@@ -341,7 +377,7 @@ public class OKHttpDemo {
             @Override
             public void onFailure(Call call, IOException e) {
                 msg = handler.obtainMessage();
-                msg.what=6;
+                msg.what = 6;
                 msg.arg1 = 1;
                 msg.obj = "OKHttp服务器连接故障1！";
                 handler.sendMessage(msg);
@@ -354,31 +390,32 @@ public class OKHttpDemo {
             public void onResponse(Call call, Response response) throws IOException {
                 String result;
                 msg = handler.obtainMessage();
-                msg.what=6;
+                msg.what = 6;
                 //处理服务器响应成功的情况
                 if (response.isSuccessful()) {
                     result = response.body().string();
                     if (result.equals("上传成功")) {
                         msg.arg1 = 0;
-                        msg.obj = "OKHTTP/" +methodName+ result + ":" + filename;
+                        msg.obj = "OKHTTP/" + methodName + result + ":" + filename;
                         Log.i(TAG, "OKHTTP上传成功");
+                    } else {
+                        //将下载结果发送给UI线程
+                        msg.arg1 = 4;
+                        msg.obj = "OKHTTP" + methodName + result + ":" + filename;
                     }
-                    else{
-                            //将下载结果发送给UI线程
-                            msg.arg1 = 4;
-                            msg.obj = "OKHTTP"+methodName + result + ":" + filename;
-                        }
-                  //处理服务器响应失败的情况
+                    //处理服务器响应失败的情况
                 } else {
-                        result = "OKHTTP服务器连接故障2";
-                        msg.arg1 = 2;
-                        msg.obj = result;
-                        Log.e(TAG, "OKHTTP服务器连接故障2");
+                    result = "OKHTTP服务器连接故障2";
+                    msg.arg1 = 2;
+                    msg.obj = result;
+                    Log.e(TAG, "OKHTTP服务器连接故障2");
                 }
                 handler.sendMessage(msg);
             }
         });
     }
+
+
 }
 
 

@@ -1,3 +1,17 @@
+/**
+ * 本例用于演示与HTTP向服务器上传文件方法，文件名可以放在url中、header中或multipart中
+ * 1）用三种不同方式实现上述功能：HttpUrlConnection、OkHttp、Retrofit
+ * 2）两种文件格式：application/octet-stream和multipart/form-data(有两种不同服务器处理方式)
+ * 3）需要获取本地存储读写权限，上传文件放在服务器/upload目录下
+ * <p>
+ * <br/>Copyright (C), 2017-2018, Steve Chang
+ * <br/>This program is protected by copyright laws.
+ * <br/>Program Name:HttpDemo
+ * <br/>Date:May，2018
+ *
+ * @author xottys@163.com
+ * @version 1.0
+ */
 package org.xottys.network.http;
 
 import android.annotation.SuppressLint;
@@ -23,7 +37,6 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.RadioGroup;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import java.lang.ref.WeakReference;
 import java.net.MalformedURLException;
@@ -33,46 +46,16 @@ import java.net.URL;
 public class UploadFragment extends Fragment {
 
     private static final String TAG = "http";
-    private static final String ARG_PARAM1 = "param1";
-    private static final String ARG_PARAM2 = "param2";
     MyHandler mHandler;
     TextView txv_servermessage, txv_filepath;
     String path;
-    private int mParam1;
-    private String mParam2;
     private int httpMethod, uploadType;
     private String httpUrl;
-
-    public UploadFragment() {
-        // Required empty public constructor
-    }
-
-    /**
-     * Use this factory method to create a new instance of
-     * this fragment using the provided parameters.
-     *
-     * @param param1 Parameter 1.
-     * @param param2 Parameter 2.
-     * @return A new instance of fragment UploadFragment.
-     */
-    // TODO: Rename and change types and number of parameters
-    public static UploadFragment newInstance(int param1, String param2) {
-        UploadFragment fragment = new UploadFragment();
-        Bundle args = new Bundle();
-        args.putInt(ARG_PARAM1, param1);
-        args.putString(ARG_PARAM2, param2);
-        fragment.setArguments(args);
-        return fragment;
-    }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (getArguments() != null) {
-            mParam1 = getArguments().getInt(ARG_PARAM1);
-            mParam2 = getArguments().getString(ARG_PARAM2);
-            mHandler = new MyHandler(this);
-        }
+        mHandler = new MyHandler(this);
     }
 
     @Override
@@ -80,12 +63,14 @@ public class UploadFragment extends Fragment {
                              Bundle savedInstanceState) {
 
         View view = inflater.inflate(R.layout.fragment_upload, container, false);
-        uploadType=1;
+        uploadType = 1;
         Button btn_upload = view.findViewById(R.id.btn_upload);
         Button btn_selectFile = view.findViewById(R.id.btn_selectfile);
         txv_filepath = view.findViewById(R.id.txv_filename);
         txv_servermessage = view.findViewById(R.id.txv_servermessage);
         final EditText edt_url = getActivity().findViewById(R.id.edt_url);
+
+        //获取http的访问方式
         RadioGroup radiogrp_http = getActivity().findViewById(R.id.rdg_httptype);
         switch (radiogrp_http.getCheckedRadioButtonId()) {
             case R.id.rdo_urlconnection:
@@ -116,6 +101,7 @@ public class UploadFragment extends Fragment {
             }
         });
 
+        //获取文件上传方式
         RadioGroup radiogrp_upload = view.findViewById(R.id.rdg_uploadtype);
         radiogrp_upload.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
             @Override
@@ -136,10 +122,10 @@ public class UploadFragment extends Fragment {
             }
         });
 
+        //从系统中选文件
         btn_selectFile.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-
                 Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
                 //intent.setType("image/*"); //选择图片
                 //intent.setType(“audio/*”); //选择音频
@@ -152,6 +138,7 @@ public class UploadFragment extends Fragment {
             }
         });
 
+        //发送上传请求
         btn_upload.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -159,56 +146,54 @@ public class UploadFragment extends Fragment {
                 httpUrl = edt_url.getText().toString();
                 if (!filepath.equals("") && !httpUrl.equals("")) {
                     switch (httpMethod) {
+                        //同步请求封装在线程中使用
                         case 1:
                             new Thread() {
                                 @Override
                                 public void run() {
+                                    //数据返回使用Handler直接给到UI线程
                                     switch (uploadType) {
                                         case 1:
                                             HttpURLConnectionDemo.uploadFileByStream(httpUrl, filepath, mHandler);
                                             break;
                                         case 2:
-                                            HttpURLConnectionDemo.uploadFileByForm(httpUrl, filepath, mHandler,1);
+                                            HttpURLConnectionDemo.uploadFileByForm(httpUrl, filepath, mHandler, 1);
                                             break;
                                         case 3:
-                                            HttpURLConnectionDemo.uploadFileByForm(httpUrl, filepath, mHandler,0);
+                                            HttpURLConnectionDemo.uploadFileByForm(httpUrl, filepath, mHandler, 0);
                                             break;
                                     }
                                 }
                             }.start();
                             break;
+                        //异步
                         case 2:
                             switch (uploadType) {
                                 case 1:
-                                OKHttpDemo.okHttpUpload(1, httpUrl, filepath, mHandler);
-                                 break;
+                                    OKHttpDemo.okHttpUpload(1, httpUrl, filepath, mHandler);
+                                    break;
                                 case 2:
-                                OKHttpDemo.okHttpUpload(2, httpUrl, filepath, mHandler);
-                                break;
+                                    OKHttpDemo.okHttpUpload(2, httpUrl, filepath, mHandler);
+                                    break;
                                 case 3:
                                     OKHttpDemo.okHttpUpload(3, httpUrl, filepath, mHandler);
                                     break;
                             }
                             break;
+                       //异步
                         case 3:
-
-                            try {
-                                URL url = new URL(httpUrl);
-                                String urlHost = url.getProtocol() + "://" + url.getHost() + ":" + url.getPort();
-                                switch (uploadType) {
+                                 switch (uploadType) {
                                     case 1:
-                                        RetrofitDemo.startUpload(1, urlHost, filepath, mHandler);
+                                        RetrofitDemo.startUpload(1, httpUrl, filepath, mHandler);
                                         break;
                                     case 2:
-                                        RetrofitDemo.startUpload(2, urlHost, filepath, mHandler);
+                                        RetrofitDemo.startUpload(2, httpUrl, filepath, mHandler);
                                         break;
                                     case 3:
-                                        RetrofitDemo.startUpload(3, urlHost, filepath, mHandler);
+                                        RetrofitDemo.startUpload(3, httpUrl, filepath, mHandler);
                                         break;
                                 }
-                            } catch (MalformedURLException e) {
-                                e.printStackTrace();
-                            }
+
                             break;
                     }
                 } else {
@@ -219,6 +204,25 @@ public class UploadFragment extends Fragment {
         return view;
     }
 
+    //获取Http服务器的各种状态和返回数据，并进行相应处理
+    private static class MyHandler extends Handler {
+        WeakReference<UploadFragment> fragment;
+
+        private MyHandler(UploadFragment thisFragment) {
+            fragment = new WeakReference<>(thisFragment);
+        }
+        @Override
+        public void handleMessage(Message msg) {
+            UploadFragment thisFragment = fragment.get();
+            super.handleMessage(msg);
+            if (thisFragment != null) {
+                Log.i(TAG, "handleMessage: " + msg.what);
+                thisFragment.txv_servermessage.append(msg.obj.toString() + "\n");
+            }
+        }
+    }
+
+    //选择手机文件后返回取得文件全路径名作为上传文件用
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (resultCode == Activity.RESULT_OK) {
@@ -237,23 +241,18 @@ public class UploadFragment extends Fragment {
             Log.i(TAG, "onActivityResult: " + path);
         }
     }
-
     public String getRealPathFromURI(Uri contentUri) {
         String res = null;
         String[] proj = {MediaStore.Images.Media.DATA};
         Cursor cursor = getActivity().getContentResolver().query(contentUri, proj, null, null, null);
         if (null != cursor && cursor.moveToFirst()) {
-            ;
             int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
             res = cursor.getString(column_index);
             cursor.close();
         }
         return res;
     }
-
-    /**
-     * 专为Android4.4设计的从Uri获取文件绝对路径，以前的方法已不好使
-     */
+    //Android4.4以上版本从Uri获取文件绝对路径
     @SuppressLint("NewApi")
     public String getPath(final Context context, final Uri uri) {
 
@@ -311,7 +310,6 @@ public class UploadFragment extends Fragment {
         }
         return null;
     }
-
     /**
      * Get the value of the data column for this Uri. This is useful for
      * MediaStore Uris, and other file-based ContentProviders.
@@ -367,26 +365,4 @@ public class UploadFragment extends Fragment {
         return "com.android.providers.media.documents".equals(uri.getAuthority());
     }
 
-    //获取TcpService的各种状态和返回数据，并进行相应处理
-    private static class MyHandler extends Handler {
-        WeakReference<UploadFragment> fragment;
-
-        private MyHandler(UploadFragment thisFragment) {
-            fragment = new WeakReference<>(thisFragment);
-        }
-
-        @Override
-        public void handleMessage(Message msg) {
-            UploadFragment thisFragment = fragment.get();
-            super.handleMessage(msg);
-            if (thisFragment != null) {
-                Log.i(TAG, "handleMessage: " + msg.what);
-                switch (msg.what) {
-                    case 6:
-                        thisFragment.txv_servermessage.append(msg.obj.toString() + "\n");
-                        break;
-                }
-            }
-        }
-    }
 }

@@ -1,9 +1,9 @@
 /**
- * HttpURLConnection的各种访问方式：GET、POST、PUT、DELETE的共同流程如下：
+ * HttpURLConnection是Android自带的同步访问Http服务器的基础类，其各种访问方式：GET、POST、PUT、DELETE的共同流程如下：
  * 1)HttpURLConnection connection = (HttpURLConnection) url.openConnection();
- * 2)定义请求和响应的属性，此处务必要与服务器保持一致
+ * 2)在Header中定义请求和响应的属性，此处务必要与服务器保持一致
  * 3）connection.connect();--可选
- * 4）connection.getOutputStream()发送数据给服务器
+ * 4）connection.getOutputStream()发送Body数据给服务器
  * 5）connection.getInputStream()接收服务器响应
  * 只支持同步，异步可以与AsyncTask协同来完成
  * httpURLConnection文件下载，就是用GET方法将从服务器获得的网络输入流用文件输出流方式写成本地文件
@@ -18,13 +18,16 @@
  * @version 1.0
  */
 package org.xottys.network.http;
-
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 
+import org.json.JSONException;
 import org.json.JSONObject;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -38,49 +41,57 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLDecoder;
+import java.util.ArrayList;
+import java.util.HashMap;
 
 public class HttpURLConnectionDemo {
     private static final String TAG = "http";
-
     /**
      * 向指定URL发送GET方法的请求
      *
-     * @param url 发送请求的URL
+     * @param baseUrl 发送请求的URL
      * @return URL所代表远程资源的响应
      */
-    public static String sendGet(String url) {
+    public static String sendGet(String baseUrl, String params) {
         String result = "";
         BufferedReader in = null;
         try {
-            //String urlName = url + "?" + params;
+            String url = baseUrl + "?" + params;
             URL realUrl = new URL(url);
             // 打开和URL之间的连接
             HttpURLConnection connection = (HttpURLConnection) realUrl.openConnection();
             // 设置通用的请求属性
             connection.setRequestProperty("accept", "*/*");
             connection.setRequestProperty("connection", "Keep-Alive");
-            connection.setRequestProperty("user-agent",
-                    "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1)");
-            connection.setRequestProperty("Content-Type", "application/octet-stream");
+            connection.setRequestProperty("Content-Type", "text/plain");
+            //设置连接主机超时
+            connection.setConnectTimeout(3000);
+            //设置从主机读取数据超时
+            connection.setReadTimeout(3000);
             //建立实际的连接
             connection.connect();
-            if (connection.getResponseCode() == 200) {
-
+            int responseCode = connection.getResponseCode();
+            if (responseCode >= 400) {
+                result = "HttpURLConnection服务器连接故障1:" + responseCode;
+                Log.e(TAG, "HttpURLConnection服务器连接故障1:" + responseCode);
+            }else{
                 // 定义BufferedReader输入流来读取URL的响应
                 in = new BufferedReader(
                         new InputStreamReader(connection.getInputStream()));
                 String line;
                 while ((line = in.readLine()) != null) {
-                    result += line + "\n";
+                    result += line ;
                 }
             }
         } catch (Exception e) {
-            Log.e(TAG, "发送GET请求出现异常！" + e);
+            result="HttpURLConnection服务器连接故障3";
+            Log.e(TAG, "HttpURLConnection服务器连接故障3");
             e.printStackTrace();
         }
         // 使用finally块来关闭输入流
@@ -94,7 +105,7 @@ public class HttpURLConnectionDemo {
             }
         }
         Log.i(TAG, "sendGet: " + result);
-        return result;
+        return "（GET）"+result;
     }
 
     /**
@@ -122,6 +133,10 @@ public class HttpURLConnectionDemo {
             //发送POST请求必须设置如下两行
             conn.setDoOutput(true);
             conn.setDoInput(true);
+            //设置连接主机超时
+            conn.setConnectTimeout(3000);
+            //设置从主机读取数据超时
+            conn.setReadTimeout(3000);
             conn.connect();
             //获取URLConnection对象对应的输出流
             out = new PrintWriter(conn.getOutputStream());
@@ -129,15 +144,23 @@ public class HttpURLConnectionDemo {
             out.print(params);
             //flush输出流的缓冲
             out.flush();
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode >= 400) {
+                result= "HttpURLConnection服务器连接故障1:" + responseCode;
+                Log.e(TAG, "HttpURLConnection服务器连接故障1:" + responseCode);
+            } else {
             //定义BufferedReader输入流来读取URL的响应
             in = new BufferedReader(
                     new InputStreamReader(conn.getInputStream()));
             String line;
             while ((line = in.readLine()) != null) {
-                result += line + "\n";
+                result += line ;
             }
-        } catch (Exception e) {
-            Log.e(TAG, "发送POST请求出现异常！" + e);
+        } }
+        catch (IOException e) {
+            result="HttpURLConnection服务器连接故障3";
+            Log.e(TAG, "HttpURLConnection服务器连接故障3");
             e.printStackTrace();
         }
         // 使用finally块来关闭输出流、输入流
@@ -154,7 +177,7 @@ public class HttpURLConnectionDemo {
             }
         }
         Log.i(TAG, "sendPost: " + result);
-        return result;
+        return "（POST）"+result;
     }
 
     /**
@@ -167,7 +190,7 @@ public class HttpURLConnectionDemo {
     public static String sendPut(String url, String params) {
         PrintWriter out = null;
         BufferedReader in = null;
-        String result = "";
+        String result = "", resultCode, resultMsg = "";
         JSONObject jsonObject;
         try {
             URL realUrl = new URL(url);
@@ -182,6 +205,10 @@ public class HttpURLConnectionDemo {
             conn.setRequestMethod("PUT");
             conn.setDoOutput(true);
             conn.setDoInput(true);
+            //设置连接主机超时
+            conn.setConnectTimeout(3000);
+            //设置从主机读取数据超时
+            conn.setReadTimeout(3000);
             conn.connect();
 
             //发送json数据给服务器
@@ -189,18 +216,36 @@ public class HttpURLConnectionDemo {
             jsonObject = new JSONObject(params);
             out.print(jsonObject);
             out.flush();
+            int responseCode = conn.getResponseCode();
+            if (responseCode >= 400) {
+                resultMsg = "HttpURLConnection服务器连接故障1:" + responseCode;
+                Log.e(TAG, "HttpURLConnection服务器连接故障1:" + responseCode);
+            } else {
 
-            //定义BufferedReader输入流来读取URL的响应
-            in = new BufferedReader(
-                    new InputStreamReader(conn.getInputStream()));
-            String line;
-            while ((line = in.readLine()) != null) {
-                result += line + "\n";
+                //定义BufferedReader输入流来读取URL的响应
+                in = new BufferedReader(
+                        new InputStreamReader(conn.getInputStream()));
+                String line;
+                while ((line = in.readLine()) != null) {
+                    result += line;
+                }
+                try {
+                    jsonObject = new JSONObject(result);
+                    resultCode = jsonObject.getString("code");
+                    resultMsg = jsonObject.getString("message");
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+                resultMsg= resultMsg+"\n"+result;
             }
-
-        } catch (Exception e) {
-            Log.e(TAG, "发送PUT请求出现异常！" + e);
-            e.printStackTrace();
+        }catch (IOException e1) {
+            resultMsg="HttpURLConnection服务器连接故障3";
+            Log.e(TAG, "HttpURLConnection服务器连接故障3");
+            e1.printStackTrace();
+        }catch (JSONException e2) {
+            resultMsg="HttpURLConnection数据解析错误，Json解析失败";
+            Log.e(TAG, "HttpURLConnection数据解析错误，Json解析失败");
+            e2.printStackTrace();
         }
         // 使用finally块来关闭输出流、输入流
         finally {
@@ -215,39 +260,60 @@ public class HttpURLConnectionDemo {
                 ex.printStackTrace();
             }
         }
-        Log.i(TAG, "sendPut: " + result);
-        return result;
+
+        Log.i(TAG, "sendPut: " + resultMsg);
+        return "（PUT）"+resultMsg;
     }
 
     /**
      * 向指定URL发送DELETE方法的请求
      *
-     * @param url 发送请求的URL
+     * @param baseUrl 发送请求的URL
      * @return URL所代表远程资源的响应
      */
-    public static String sendDelete(String url) {
+    public static String sendDelete(String baseUrl, String params) {
+        PrintWriter out ;
         String result = "";
-        BufferedReader in = null;
+        InputStream in = null;
+        Message msg = Message.obtain();
+        msg.what = 0x04;
+        //将客户端body中的xml数据读取并解析到ArrayList中
         try {
-            URL realUrl = new URL(url);
+            URL realUrl = new URL(baseUrl);
             HttpURLConnection connection = (HttpURLConnection) realUrl.openConnection();
             connection.setRequestProperty("accept", "*/*");
             connection.setRequestProperty("connection", "Keep-Alive");
             connection.setRequestProperty("user-agent",
                     "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1)");
+            connection.setRequestProperty("Content-Type", "application/xml");
             connection.setRequestMethod("DELETE");
+            //设置连接主机超时
+            connection.setConnectTimeout(3000);
+            //设置从主机读取数据超时
+            connection.setReadTimeout(3000);
             connection.connect();
-            if (connection.getResponseCode() == 200) {
-                // 定义BufferedReader输入流来读取URL的响应
-                in = new BufferedReader(
-                        new InputStreamReader(connection.getInputStream()));
-                String line;
-                while ((line = in.readLine()) != null) {
-                    result += line + "\n";
-                }
+            //发送xml数据给服务器
+            out = new PrintWriter(connection.getOutputStream());
+            out.print(params);
+            out.flush();
+            int responseCode = connection.getResponseCode();
+            if (responseCode >= 400) {
+                result = "HttpURLConnection服务器连接故障1:"+responseCode;
+                Log.e(TAG, "HttpURLConnection服务器连接故障1:"+responseCode);
+            } else {
+
+                in = connection.getInputStream();
+                ArrayList<HashMap> results = Util.readxmlByDom(in);
+                if (results.size() != 0){
+                    for (HashMap rs : results) {
+                            result=rs.get("message").toString();
+                    }
+            }
+                result += Util.xmlString;
             }
         } catch (Exception e) {
-            Log.e(TAG, "发送DELETE请求出现异常！" + e);
+            result="HttpURLConnection服务器连接故障3";
+            Log.e(TAG, "HttpURLConnection服务器连接故障3");
             e.printStackTrace();
         }
         // 使用finally块来关闭输入流
@@ -261,18 +327,17 @@ public class HttpURLConnectionDemo {
             }
         }
         Log.i(TAG, "sendDelete: " + result);
-        return result;
+
+        return "（DELETE）"+result;
     }
 
 
     /**
      * @param url      下载路径
      * @param filename 下载文件名
-     * @param handler  向主线程返回UI信息的handler
      */
-    public static void downloadFile(String url, String filename, Handler handler) {
-        Message msg = Message.obtain();
-        msg.what = 0x05;
+    public static String downloadFile(String url, String filename) {
+        String result;
         try {
             //做好GET访问方式的准备
             URL realUrl = new URL(url + "?filename=" + filename);
@@ -286,13 +351,10 @@ public class HttpURLConnectionDemo {
             httpURLConnection.setReadTimeout(3000);
 
             httpURLConnection.connect();
-            int responseCode = httpURLConnection.getResponseCode();
 
-            String result = "";
+            int responseCode = httpURLConnection.getResponseCode();
             if (responseCode >= 400) {
                 result = "HttpURLConnection服务器连接故障1";
-                msg.arg1 = 2;
-                msg.obj = result;
                 Log.e(TAG, "HttpURLConnection服务器连接故障1");
             } else {
                 result = URLDecoder.decode(httpURLConnection.getHeaderField("result"), "UTF-8");
@@ -302,9 +364,20 @@ public class HttpURLConnectionDemo {
                     boolean sdCardExist = Environment.getExternalStorageState()
                             .equals(Environment.MEDIA_MOUNTED);//判断sd卡是否存在
                     if (sdCardExist) {
-                        sdDir = Environment.getExternalStorageDirectory();//获取跟目录
+                        sdDir = Environment.getExternalStorageDirectory();//获取SD卡根目录
+                    }else
+                    {
+                        sdDir =Environment.getDataDirectory();
                     }
-                    File file = new File(sdDir.toString() + "/" + filename);
+
+                    String filepath="";
+                    if(sdDir!=null)
+                       filepath = sdDir.toString() + "/AndroidDemo/download/" + filename;
+                    File file = new File(filepath);
+                    File fileParent = file.getParentFile();
+                    if (!fileParent.exists()) {
+                        fileParent.mkdirs();
+                    }
 
                     //从服务器返回的Header中获取下载文件大小，前提是服务器有这样安排
                     int fileLength = httpURLConnection.getContentLength();
@@ -312,7 +385,7 @@ public class HttpURLConnectionDemo {
                     //从服务器获取的数据流直接写入文件流
                     BufferedInputStream in = new BufferedInputStream(httpURLConnection.getInputStream());
                     OutputStream out = new FileOutputStream(file);
-                    int size = 0;
+                    int size;
                     int len = 0;
                     byte[] buf = new byte[1024];
                     while ((size = in.read(buf)) != -1) {
@@ -323,31 +396,21 @@ public class HttpURLConnectionDemo {
                     }
                     in.close();
                     out.close();
-
-                    //将下载结果发送给UI线程
-                    msg.arg1 = 0;
-                    msg.obj = "HttpURLConnection" + result + ":" + filename;
-
-                } else {
-                    //将下载结果发送给UI线程
-                    msg.arg1 = 1;
-                    msg.obj = "HttpURLConnection" + result + ":" + filename;
                 }
+
+                    result = "HttpURLConnection" + result + ":" + filename;
                 Log.i(TAG, result);
             }
         } catch (MalformedURLException e) {
-            msg.arg1 = 3;
-            msg.obj = "HttpURLConnection服务器连接故障2";
+            result = "HttpURLConnection服务器连接故障2";
             Log.e(TAG, "HttpURLConnection服务器连接故障2");
             e.printStackTrace();
         } catch (IOException e) {
-            msg.arg1 = 4;
-            msg.obj = "HttpURLConnection服务器连接故障3";
+            result = "HttpURLConnection服务器连接故障3";
             Log.e(TAG, "HttpURLConnection服务器连接故障3");
             e.printStackTrace();
-        } finally {
-            handler.sendMessage(msg);
         }
+        return result;
     }
 
     /**
@@ -356,25 +419,16 @@ public class HttpURLConnectionDemo {
      * @param url：                 上传的路径
      * @param filepath：需要上传的文件全路径名
      * @param handler              向主线程返回UI信息的handler
-     * @return
      */
-    public static String uploadFileByStream(String url, String filepath, Handler handler) {
+    public static void uploadFileByStream(String url, String filepath, Handler handler) {
         String result = "";
         DataInputStream in = null;
         OutputStream out = null;
         HttpURLConnection conn = null;
-        BufferedReader ins = null;
+        BufferedReader ins ;
         Message msg = Message.obtain();
         msg.what = 0x06;
 
-        //将本地SDCard中要上传的文件赋值给file
-//        File sdDir = null;
-//        boolean sdCardExist = Environment.getExternalStorageState()
-//                .equals(Environment.MEDIA_MOUNTED);//判断sd卡是否存在
-//        if (sdCardExist) {
-//            sdDir = Environment.getExternalStorageDirectory();//获取跟目录
-//        }
-//        File file = new File(sdDir.toString() + "/" + filename);
         File file = new File(filepath);
         String filename = filepath.substring(filepath.lastIndexOf("/") + 1);
 
@@ -397,7 +451,7 @@ public class HttpURLConnectionDemo {
             //读取和上传文件
             in = new DataInputStream(new FileInputStream(file));
             out = conn.getOutputStream();
-            int bytes = 0;
+            int bytes;
             byte[] buffer = new byte[1024];
             while ((bytes = in.read(buffer)) != -1) {
                 out.write(buffer, 0, bytes);
@@ -421,24 +475,18 @@ public class HttpURLConnectionDemo {
                 }
                 if (result.equals("上传成功")) {
                     //将返回信息发往UI线程
-//                    Message msg = Message.obtain();
-//                    msg.what = 0x06;
+
                     msg.arg1 = 0;
                 } else {
                     msg.arg1 = 1;
                 }
                 msg.obj = "HttpURLConnection/octet-stream" + result + ":" + filename;
-//                    handler.sendMessage(msg);
 
                 Log.i(TAG, "HttpURL流方式上传完成");
             }
-//            }
         } catch (IOException e) {
-//            Message msg = Message.obtain();
-//            msg.what = 0x06;
             msg.arg1 = 3;
             msg.obj = "HttpURLConnection服务器连接故障2";
-//            handler.sendMessage(msg);
             Log.e(TAG, "HttpURLConnection服务器连接故障2");
             e.printStackTrace();
 
@@ -469,19 +517,16 @@ public class HttpURLConnectionDemo {
             }
             handler.sendMessage(msg);
         }
-        return result;
     }
 
     /**
      * 用Multipart表单方式上传文件
      *
      * @param actionUrl：上传的路径
-     * @param filepath：       需要上传的全路径文件名
-     * @param handler         向主线程返回UI信息的handler
-     * @return 服务器返回值
+     * @param filepath：需要上传的全路径文件名
+     * @param handler: 向主线程返回UI信息的handler
      */
-    @SuppressWarnings("finally")
-    public static String uploadFileByForm(String actionUrl, String filepath, Handler handler, int serverType) {
+    public static void uploadFileByForm(String actionUrl, String filepath, Handler handler, int serverType) {
         String end = "\r\n";
         String twoHyphens = "--";
         String boundary = "WUm4580jbtwfJhNp7zi1djFEO3wNNm";
@@ -490,9 +535,9 @@ public class HttpURLConnectionDemo {
         InputStream inputStream = null;
         InputStreamReader inputStreamReader = null;
         BufferedReader reader = null;
-        StringBuffer resultBuffer = new StringBuffer();
-        String tempLine = null;
-        String result = "";
+        StringBuffer resultBuffer;
+        String tempLine ;
+        String result ;
         Message msg = Message.obtain();
         msg.what = 0x06;
         try {
@@ -515,15 +560,6 @@ public class HttpURLConnectionDemo {
             //设置从主机读取数据超时
             httpURLConnection.setReadTimeout(3000);
             httpURLConnection.connect();
-//            //从SDCard中找到要上传的文件，将其定义为uploadFile
-//            File uploadFile = null;
-//            File sdDir = null;
-//            boolean sdCardExist = Environment.getExternalStorageState()
-//                    .equals(Environment.MEDIA_MOUNTED);//判断sd卡是否存在
-//            if (sdCardExist) {
-//                sdDir = Environment.getExternalStorageDirectory();//获取根目录
-//                uploadFile = new File(sdDir.toString() + "/" + filename);
-//            }
 
             File file = new File(filepath);
             String filename = filepath.substring(filepath.lastIndexOf("/") + 1);
@@ -537,7 +573,7 @@ public class HttpURLConnectionDemo {
             FileInputStream fStream = new FileInputStream(file);
             int bufferSize = 1024;
             byte[] buffer = new byte[bufferSize];
-            int length = -1;
+            int length;
             while ((length = fStream.read(buffer)) != -1) {
                 ds.write(buffer, 0, length);
             }
@@ -554,8 +590,7 @@ public class HttpURLConnectionDemo {
                 msg.obj = result;
                 Log.e(TAG, "HttpURLConnection服务器连接故障1");
             } else {
-//            //收取服务器返回信息
-//            if (httpURLConnection.getResponseCode() == HttpURLConnection.HTTP_OK) {
+               //收取服务器返回信息
                 inputStream = httpURLConnection.getInputStream();
                 inputStreamReader = new InputStreamReader(inputStream);
                 reader = new BufferedReader(inputStreamReader);
@@ -563,11 +598,9 @@ public class HttpURLConnectionDemo {
                 while ((tempLine = reader.readLine()) != null) {
                     resultBuffer.append(tempLine);
                 }
-
+                result=resultBuffer.toString();
                 if (result.equals("上传成功")) {
                     //将返回信息发往UI线程
-//                    Message msg = Message.obtain();
-//                    msg.what = 0x06;
                     msg.arg1 = 0;
                 } else {
                     msg.arg1 = 1;
@@ -581,7 +614,6 @@ public class HttpURLConnectionDemo {
         } catch (Exception e) {
             msg.arg1 = 3;
             msg.obj = "HttpURLConnection服务器连接故障2";
-//            handler.sendMessage(msg);
             Log.e(TAG, "HttpURLConnection服务器连接故障2");
             e.printStackTrace();
         } finally {
@@ -615,7 +647,6 @@ public class HttpURLConnectionDemo {
             }
             handler.sendMessage(msg);
         }
-        return resultBuffer.toString();
     }
 
 
@@ -640,4 +671,5 @@ public class HttpURLConnectionDemo {
         }
         return sessionID;
     }
+
 }
