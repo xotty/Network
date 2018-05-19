@@ -17,6 +17,14 @@
  * }
  * OKHttp文件下载，就是用GET方法访问服务器，将服务器返回的response.body().byteStream()用文件输出流方式写成本地文件
  * OKHttp文件上传，就是用POST或PUT方法访问服务器,用文件构建RequestBody及Request
+ *
+ * Cookie处理（这须使用OKHTTP自定义的类：CookieJar和Cookie）流程
+ * 1）定义CookieJar，并覆写其中saveFromResponse和loadForRequest方法，前者直接得到服务器的Cookie，后者将客户端Cookie发送给服务器
+ * 2）在OkHttpClient构造时将上述CookieJar放入
+ * 3）在需要的地方使用Cookie结果
+ *
+ * Session 处理：与上述Cookie类似，只是从中单独识别和处理JSESSIONID=xxxx这样一条Cookie
+ *
  * <p>
  * <br/>Copyright (C), 2017-2018, Steve Chang
  * <br/>This program is protected by copyright laws.
@@ -41,15 +49,18 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.SocketTimeoutException;
+import java.net.URL;
 import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
+import okhttp3.Cookie;
+import okhttp3.CookieJar;
 import okhttp3.FormBody;
-import okhttp3.Headers;
+import okhttp3.HttpUrl;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
@@ -62,6 +73,8 @@ public class OKHttpDemo {
     private static OkHttpClient mOkHttpClient;
     static private Message msg = Message.obtain();
     static private String methodName = "";
+    static private List<Cookie> myCookies;
+    static private String myCookie = "", sessionID = "";
 
     //用OKHttp访问服务器，同步或异步接收服务器响应信息
     public static String okHttp(final int method, String url, String param, final Handler handler) {
@@ -74,11 +87,75 @@ public class OKHttpDemo {
                 .connectTimeout(3, TimeUnit.SECONDS)//设置连接超时时间
                 .build();
         Request request = null;
-        RequestBody body = null;
-        Response mResponse = null;
+        RequestBody body ;
+        Response mResponse;
+
+        //OKHTTP专门用来保存和发送Cookie的
+        CookieJar myCookieJar = new CookieJar() {
+            //读取和处理服务器传来的Cookie
+            @Override
+            public void saveFromResponse(HttpUrl url, List<Cookie> cookies) {
+                myCookies = cookies;
+                myCookie = cookies.toString();
+            }
+
+            //向服务器发送Cookie
+            @Override
+            public List<Cookie> loadForRequest(HttpUrl url) {
+                ArrayList<Cookie> cookies = new ArrayList<>();
+                if (myCookies != null) {
+                    //OKHTTP的Cookie生成
+                    Cookie cookie = new Cookie.Builder()
+                            .hostOnlyDomain(url.host())
+                            .name("company").value("CCTV")
+                            .build();
+                    cookies.add(cookie);
+                    for (Cookie cook : myCookies) {
+                        //Cookie没过期
+                        if (System.currentTimeMillis() <= cook.expiresAt()) {
+                            cookies.add(cook);
+                        }
+                    }
+                }
+                return cookies;
+            }
+        };
+
+        //用来收发SessionID
+        CookieJar mySessionJar = new CookieJar() {
+            //读取和保存服务器传来的SessionID
+            @Override
+            public void saveFromResponse(HttpUrl url, List<Cookie> cookies) {
+                for (Cookie cookie : cookies) {
+                    if (cookie.name().equals("JSESSIONID")) {
+                        sessionID = cookie.value();
+                        Log.i(TAG, "Session Created in Server: " + cookie.name() + "/" + cookie.value());
+                        break;
+                    }
+                }
+            }
+
+            //向服务器发送SessionID
+            @Override
+            public List<Cookie> loadForRequest(HttpUrl url) {
+                ArrayList<Cookie> cookies = new ArrayList<>();
+                if (!sessionID.equals("")) {
+                    Cookie cookie = new Cookie.Builder()
+                            .hostOnlyDomain(url.host())
+                            .name("JSESSIONID").value(sessionID)
+                            .build();
+                    cookies.add(cookie);
+                }
+                Log.i(TAG, "loadForRequest: " + cookies + "  sessionID:" + sessionID);
+                return cookies;
+            }
+        };
+
 
         //创建请求Request，其中包含url、访问方式、header和body内容
-        switch (method) {
+        switch (method)
+
+        {
             //GET:请求参数封装在url里
             case 1:
                 String realUrl = url + "?" + param;
@@ -118,13 +195,45 @@ public class OKHttpDemo {
                         .build();
                 break;
         }
-        Call call = mOkHttpClient.newCall(request);
-        if (handler == null) {
+
+        Call call;
+        if (method == 1)
+        {   //在client 中放入myCookieJar
+            OkHttpClient mClient1 = new OkHttpClient.Builder()
+                    .readTimeout(3, TimeUnit.SECONDS)//设置读超时时间
+                    .writeTimeout(3, TimeUnit.SECONDS)//设置写超时时间
+                    .connectTimeout(3, TimeUnit.SECONDS)//设置连接超时时间
+                    .cookieJar(myCookieJar)
+                    .build();
+
+            call = mClient1.newCall(request);
+        } else if (method == 3) {
+            //在client 中放入mySessionJar
+            OkHttpClient mClient2 = new OkHttpClient.Builder()
+                    .readTimeout(3, TimeUnit.SECONDS)//设置读超时时间
+                    .writeTimeout(3, TimeUnit.SECONDS)//设置写超时时间
+                    .connectTimeout(3, TimeUnit.SECONDS)//设置连接超时时间
+                    .cookieJar(mySessionJar)
+                    .build();
+
+            call = mClient2.newCall(request);
+        } else
+
+            call = mOkHttpClient.newCall(request);
+
+        if (handler == null)
+
+        {
             //发送请求，同步获取服务器响应
             try {
                 mResponse = call.execute();
                 if (mResponse.isSuccessful()) {
                     result = mResponse.body().string();
+
+                    //可以直接这样获取服务器的Cookie
+                    List<Cookie> cookies = Cookie.parseAll(HttpUrl.get(new URL(url)), mResponse.headers());
+                    if(cookies!=null) Log.i(TAG, "okHttp cookie from server:"+cookies.toString());
+
                     if (method == 3) {
                         try {
                             JSONObject jsonObject = new JSONObject(result);
@@ -133,7 +242,8 @@ public class OKHttpDemo {
                         } catch (JSONException e) {
                             e.printStackTrace();
                         }
-                        resultMsg = resultMsg + "\n" + result;
+                        //直接使用CookieJar处理Session的结果
+                        resultMsg = resultMsg + "\n" + result + (sessionID.equals("") ? "" : "\nSessionID：" + sessionID);
                     } else if (method == 4) {
                         InputStream in = new ByteArrayInputStream(result.getBytes("UTF-8"));
                         ArrayList<HashMap> results = Util.readxmlByDom(in);
@@ -143,6 +253,9 @@ public class OKHttpDemo {
                             }
                         }
                         resultMsg = result + Util.xmlString;
+                    } else if (method == 1) {
+                        //直接使用CookieJar处理Cookie的结果
+                        resultMsg = result + (myCookie.equals("") ? "" : "  Cookie From Server:\n" + myCookie);
                     } else
                         resultMsg = result;
                 } else {
@@ -152,8 +265,10 @@ public class OKHttpDemo {
                 resultMsg = "OKHttp服务器连接故障1";
                 e.printStackTrace();
             }
-            Log.i(TAG, "syncHttp: " + resultMsg);
-        } else {
+            Log.i(TAG, "OKHttp: " + resultMsg);
+        } else
+
+        {
             //异步接收服务器响应信息
             call.enqueue(new okhttp3.Callback() {
 
@@ -271,7 +386,7 @@ public class OKHttpDemo {
                         //从服务器获取response，读取其body().byteStream(),将其以文件输出流形式写到上面定义的文件中去
                         InputStream is = null;
                         byte[] buf = new byte[2048];
-                        int len = 0;
+                        int len;
                         FileOutputStream fos = null;
                         try {
                             long total = response.body().contentLength();
@@ -318,7 +433,8 @@ public class OKHttpDemo {
     }
 
     //okhttp文件上传,method=1:stream方式   2：multipart（servlet3.0）  3:multipart（commons-fileupload）
-    public static void okHttpUpload(final int method, String url, String filepath, final Handler handler) {
+    public static void okHttpUpload(final int method, String url, String filepath,
+                                    final Handler handler) {
         mOkHttpClient = new OkHttpClient.Builder()
                 .connectTimeout(3, TimeUnit.SECONDS)
                 .readTimeout(3, TimeUnit.SECONDS)

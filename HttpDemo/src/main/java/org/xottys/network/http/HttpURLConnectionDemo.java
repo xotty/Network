@@ -15,6 +15,7 @@
  * --Set-Cookie:value [ ;expires=date][ ;domain=domain][ ;path=path][ ;Httponly][ ;secure]--服务器端
  * --Cookie : value或Cookie:value1 ; value2 ; name1=value1--客户端
  * 多键值对可以用多value的 Cookie（服务器就要多个Set-Cookie行）方式，也可以在单value的Cookie中这样定义：name=key1=value1&key2=value2......
+ * android使用HttpCookie类处理Cookie内容,HttpUrlConnection使用了CookieHandler，故服务器响应时会将Cookie自动放入CookieManager
  *
  * Session(在sendPut中演示):用上述方法在Cookie中接收和发送sessionID即可，格式为：JSESSIONID=149023982C1E1F2B78B92E03809B1779，其代表的Attribute内容只在服务器可见。
  * <p>
@@ -108,7 +109,6 @@ public class HttpURLConnectionDemo {
             //对服务器传来Cookie进行解析和处理
             List<HttpCookie> httpCookies = manager.getCookieStore().get(uri);
             Log.i(TAG, "CookieManager Cookie :" + httpCookies.toString());
-
             if (httpCookies.size() > 0) {
                 for (HttpCookie hcookie : httpCookies) {
                     if (hcookie != null & !hcookie.hasExpired()) {
@@ -119,12 +119,16 @@ public class HttpURLConnectionDemo {
                         cookieBuilder.append(hcookie.getValue());
                     }
                 }
+                cookieBuilder.append(divider);
+                cookieBuilder.append("company=CCTV");
                 //将有效Cookie再次发送给服务器
-                connection.setRequestProperty("Cookie", cookieBuilder.toString());
+                connection.setRequestProperty("Cookie",cookieBuilder.toString());
 
                 Log.i(TAG, "Cookie to server: " + cookieBuilder.toString());
-            }
 
+
+            }
+            connection.setRequestMethod("GET");
             //设置连接主机超时
             connection.setConnectTimeout(3000);
             //设置从主机读取数据超时

@@ -15,6 +15,15 @@
  * }
  * Retrofit文件下载，就是用GET方法访问服务器，将服务器返回的response.body().byteStream()用文件输出流方式写成本地文件
  * Retrofit文件上传，就是用POST或PUT方法访问服务器,用文件构建RequestBody，在接口Call方法中将其传递进去
+ *
+ * Cookie处理（结合OKHTTP的CookieJar和JAVA的CookieManager）流程：
+ * 1）定义CookieManager(CookieHandler接口的实现类)对象
+ * 2）用上述CookieManager对象来构造JavaNetCookieJar(CookieJar的子类)对象
+ * 3）在OkHttpClient构造时将上述JavaNetCookieJar对象放入
+ * 4）服务器Cookie获取结果和向服务器发送的Cookie都自动放在CookieManager中，直接使用即可
+ *
+ * Session 处理：与上述Cookie类似，只是从中单独识别和处理JSESSIONID=xxxx这样一条Cookie
+ *
  * <p>
  * <br/>Copyright (C), 2017-2018, Steve Chang
  * <br/>This program is protected by copyright laws.
@@ -40,10 +49,18 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
+import java.net.CookieStore;
+import java.net.HttpCookie;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.util.HashMap;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import okhttp3.JavaNetCookieJar;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
@@ -85,7 +102,7 @@ interface PostService {
 
     //提交psot数据可以用下列表单的方式传递键值对@Field或@FieldMap
     @FormUrlEncoded
-    Call<String> postDemo(@Url String urlPath,@Field("user") String name, @Field("password") String password);
+    Call<String> postDemo(@Url String urlPath, @Field("user") String name, @Field("password") String password);
 
     //也可以直接放在body中,但需要服务有器配套的解析服务并将客户端retrofit Convertor配置为gson
     //Call <String> postDemo(@Body Account account );
@@ -97,8 +114,7 @@ interface PutService {
     //Content-Type也可以在代码中添加，Coverter会自动添加相应Content-Type
     @Headers({"Content-Type: application/json", "Accept: application/json"})
     @PUT
-
-    Call<JsonObject> putDemo(@Url String urlPath,@Body JsonObject object);
+    Call<JsonObject> putDemo(@Url String urlPath, @Body JsonObject object);
    
      /*替代方法，此时在构造RequestBody时要用Json Media-Type
      Call<JsonObject> putDemo(@Body RequestBody body);*/
@@ -107,13 +123,13 @@ interface PutService {
 interface DeleteService {
     //@DELETE表示请求方式，其参数为baseURL后的组成部分
     @HTTP(method = "DELETE", hasBody = true)
-    Call<SimpleXmlResult> deleteDemo(@Url String urlPath,@Body RequestBody body);
+    Call<SimpleXmlResult> deleteDemo(@Url String urlPath, @Body RequestBody body);
 }
 
 interface DownloadService {
     //BaseUrl将会引入，与updown和filename=？一起组成正式的访问url
     @GET
-    Call<ResponseBody> downloadFile(@Url String urlPath,@Query("filename") String filename);
+    Call<ResponseBody> downloadFile(@Url String urlPath, @Query("filename") String filename);
 
     /* 可替换方法，此时BaseUrl将不会引入
     @GET
@@ -122,7 +138,7 @@ interface DownloadService {
 
 interface UploadService {
     @PUT
-    Call<ResponseBody> uploadFileWithRequestBody(@Url String urlPath,@Query("filename") String filename, @Body RequestBody body);
+    Call<ResponseBody> uploadFileWithRequestBody(@Url String urlPath, @Query("filename") String filename, @Body RequestBody body);
 
     /**
      * 通过 MultipartBody和@body作为参数来上传
@@ -131,7 +147,7 @@ interface UploadService {
      * @return 状态信息
      */
     @HTTP(method = "DELETE", hasBody = true)
-    Call<ResponseBody> uploadFileWithMultiPartBody(@Url String urlPath,@Body MultipartBody multipartBody);
+    Call<ResponseBody> uploadFileWithMultiPartBody(@Url String urlPath, @Body MultipartBody multipartBody);
 
     /**
      * @param part 每个part代表一个文件
@@ -139,44 +155,71 @@ interface UploadService {
      */
     @Multipart
     @POST
-    Call<ResponseBody> uploadFileWithPart(@Url String urlPath,@Part() MultipartBody.Part part);
+    Call<ResponseBody> uploadFileWithPart(@Url String urlPath, @Part() MultipartBody.Part part);
 
 
 }
 
 public class RetrofitDemo {
     private static final String TAG = "http";
-    static private String methodName = "";
     //设置个性化超时的client，缺省为10s
     private static final OkHttpClient okHttpClient = new OkHttpClient.Builder().
             connectTimeout(3, TimeUnit.SECONDS).
             readTimeout(3, TimeUnit.SECONDS).
             writeTimeout(5, TimeUnit.SECONDS).build();
+    static private String methodName = "";
+    private static CookieManager cookieManager;
+    private static List<HttpCookie> myCookies;
+    private static String myCookie = "", sessionID = "";
 
     public static String retrofitHttp(final int method, String url, String param, final Handler handler) {
         final String TAG = "HttpDemo";
         Retrofit retrofit;
         Call<String> stringCall = null;
         Call<JsonObject> jsonObjectCall = null;
-        Call<SimpleXmlResult> xmlCall=null;
+        Call<SimpleXmlResult> xmlCall = null;
         final SimpleXmlResult simpleXmlResult;
-        HashMap<String,String> urlmap=Util.decodeUrl(url);
-        String baseUrl="http://"+urlmap.get("BaseUrl")+"/";
-        String urlPath=urlmap.get("PathUrl");
+        HashMap<String, String> urlmap = Util.decodeUrl(url);
+        String baseUrl = "http://" + urlmap.get("BaseUrl") + "/";
+        String urlPath = urlmap.get("PathUrl");
         String result = "";
         HashMap<String, String> accounts = Util.decodeUrlQueryString(param);
 
         switch (method) {
             //提交Get请求
             case 1:
-
+                if (cookieManager==null) cookieManager = new CookieManager();
+                if (myCookies != null) {
+                    try {
+                        //系统自动会把服务器得到的Cookie加到CookieStore中，并自动过滤过期的Cookie
+//                      cookieManager.getCookieStore().removeAll();
+                        HttpCookie cookie = new HttpCookie("company", "CCTV");
+                        cookieManager.getCookieStore().add(new URI(baseUrl), cookie);
+//                        for (HttpCookie cook : myCookies) {
+//                            //Cookie没过期
+//                            if (!cook.hasExpired()) {
+//                                cookieManager.getCookieStore().add(new URI(baseUrl), cook);
+//                            }
+//                        }
+                    } catch (URISyntaxException e) {
+                        e.printStackTrace();
+                    }
+                }
+                cookieManager.setCookiePolicy(CookiePolicy.ACCEPT_ALL);
+                JavaNetCookieJar myCookieJar = new JavaNetCookieJar(cookieManager);
+                OkHttpClient mClient = new OkHttpClient.Builder()
+                        .connectTimeout(3, TimeUnit.SECONDS)
+                        .readTimeout(3, TimeUnit.SECONDS)
+                        .writeTimeout(5, TimeUnit.SECONDS)
+                        .cookieJar(myCookieJar)
+                        .build();
                 retrofit = new Retrofit.Builder()
                         .baseUrl(baseUrl)
-                        .client(okHttpClient)
+                        .client(mClient)
                         .addConverterFactory(ScalarsConverterFactory.create())
                         .build();
                 GetService service1 = retrofit.create(GetService.class);
-                stringCall = service1.getDemo(urlPath,accounts.get("user"), accounts.get("password"));
+                stringCall = service1.getDemo(urlPath, accounts.get("user"), accounts.get("password"));
                 break;
             //提交Post请求
             case 2:
@@ -186,14 +229,31 @@ public class RetrofitDemo {
                         .addConverterFactory(ScalarsConverterFactory.create())
                         .build();
                 PostService service2 = retrofit.create(PostService.class);
-                stringCall = service2.postDemo(urlPath,accounts.get("user"), accounts.get("password"));
+                stringCall = service2.postDemo(urlPath, accounts.get("user"), accounts.get("password"));
                 break;
             //提交Put请求
             case 3:
-
+                if (cookieManager==null) cookieManager = new CookieManager();
+                if ( !sessionID.equals("")) {
+                    try {
+                        cookieManager.getCookieStore().removeAll();
+                        HttpCookie cookie = new HttpCookie("JSESSIONID", sessionID);
+                        cookieManager.getCookieStore().add(new URI(baseUrl), cookie);
+                    } catch (URISyntaxException e) {
+                        e.printStackTrace();
+                    }
+                }
+                cookieManager.setCookiePolicy(CookiePolicy.ACCEPT_ALL);
+                JavaNetCookieJar mCookieJar = new JavaNetCookieJar(cookieManager);
+                OkHttpClient nClient = new OkHttpClient.Builder()
+                        .connectTimeout(3, TimeUnit.SECONDS)
+                        .readTimeout(3, TimeUnit.SECONDS)
+                        .writeTimeout(5, TimeUnit.SECONDS)
+                        .cookieJar(mCookieJar)
+                        .build();
                 retrofit = new Retrofit.Builder()
                         .baseUrl(baseUrl)
-                        .client(okHttpClient)
+                        .client(nClient)
                         .addConverterFactory(GsonConverterFactory.create())
                         .build();
                 PutService service3 = retrofit.create(PutService.class);
@@ -203,11 +263,11 @@ public class RetrofitDemo {
                 } catch (JsonParseException e) {
                     e.printStackTrace();
                 }
-               jsonObjectCall = service3.putDemo(urlPath,jsonObject);
+                jsonObjectCall = service3.putDemo(urlPath, jsonObject);
                /* 也可以用RequestBody做参数
                 RequestBody jsonBody = RequestBody.create(okhttp3.MediaType.parse("application/json; charset=utf-8"), jsonObject.toString());
                 jsonObjectCall = service3.putDemo(jsonBody);*/
-               
+
 
                 break;
             //提交Delete请求
@@ -220,7 +280,7 @@ public class RetrofitDemo {
 
                 RequestBody xmlBody = RequestBody.create(okhttp3.MediaType.parse("application/xml; charset=utf-8"), param);
                 DeleteService service4 = retrofit.create(DeleteService.class);
-                xmlCall= service4.deleteDemo(urlPath,xmlBody);
+                xmlCall = service4.deleteDemo(urlPath, xmlBody);
                 break;
         }
         try {
@@ -228,8 +288,9 @@ public class RetrofitDemo {
                 //返回普通的String
                 case 1:
                 case 2:
-                    if (handler == null){
-                        result = stringCall.execute().body();}
+                    if (handler == null) {
+                        result = stringCall.execute().body();
+                    }
                     //异步返回服务器结果的接收和处理
                     else {
                         stringCall.enqueue(new Callback<String>() {
@@ -237,6 +298,12 @@ public class RetrofitDemo {
                             @Override
                             public void onResponse(
                                     Call<String> call, Response<String> response) {
+                                //获取服务器返回的Cookie，过期Cookie会被自动过滤掉
+                                CookieStore cookieJar = cookieManager.getCookieStore();
+                                List<HttpCookie> cookies = cookieJar.getCookies();
+                                myCookies = cookies;
+                                myCookie = cookies.toString();
+
                                 Message msg = Message.obtain();
                                 String result;
                                 msg.what = 1;
@@ -246,7 +313,7 @@ public class RetrofitDemo {
                                     Log.e(TAG, "Retrofit服务器连接故障2");
                                 } else {
                                     msg.arg1 = 0;
-                                result=response.body();
+                                    result = response.body()+ (myCookie.equals("")||method!=1 ? "" : "  Cookie From Server:\n" + myCookie);
                                 }
                                 msg.obj = result;
                                 handler.sendMessage(msg);
@@ -254,7 +321,7 @@ public class RetrofitDemo {
 
                             //返回失败
                             @Override
-                            public void onFailure(Call<String > call, Throwable t) {
+                            public void onFailure(Call<String> call, Throwable t) {
                                 Message msg = Message.obtain();
                                 msg.what = 1;
                                 msg.arg1 = 1;
@@ -268,9 +335,10 @@ public class RetrofitDemo {
                     break;
                 case 4: {
                     //同步返回服务器结果的接收和处理
-                    if (handler == null){
+                    if (handler == null) {
                         simpleXmlResult = xmlCall.execute().body();
-                        result= simpleXmlResult.getInfo();}
+                        result = simpleXmlResult.getInfo();
+                    }
                     //异步返回服务器结果的接收和处理
                     else {
                         xmlCall.enqueue(new Callback<SimpleXmlResult>() {
@@ -291,7 +359,8 @@ public class RetrofitDemo {
                                     result = accr.getInfo();
                                 }
                                 msg.obj = result;
-                                handler.sendMessage(msg); }
+                                handler.sendMessage(msg);
+                            }
 
                             //返回失败
                             @Override
@@ -314,7 +383,7 @@ public class RetrofitDemo {
                     if (handler == null)
                         try {
                             JsonObject jsonObject = jsonObjectCall.execute().body();
-                            result =  jsonObject.get("message") + "\n" + jsonObject.toString();
+                            result = jsonObject.get("message") + "\n" + jsonObject.toString();
                         } catch (IOException e) {
                             e.printStackTrace();
                         }
@@ -332,12 +401,27 @@ public class RetrofitDemo {
                                     msg.arg1 = 2;
                                     Log.e(TAG, "Retrofit服务器连接故障2");
                                 } else {
-                                JsonObject jsonObject = response.body();
+                                    JsonObject jsonObject = response.body();
                                     result = jsonObject.get("message") + "\n" + jsonObject.toString();
                                     msg.arg1 = 0;
+
+                                    //获取服务器返回的Cookie
+                                    CookieStore cookieJar = cookieManager.getCookieStore();
+                                    List<HttpCookie> httpCookies = cookieJar.getCookies();
+                                    if (httpCookies.size() > 0) {
+                                        for (HttpCookie hcookie : httpCookies) {
+                                            if (hcookie != null ) {
+                                                if (hcookie.getName().equals("JSESSIONID"))
+                                                    sessionID=hcookie.getValue();
+                                                 if (!sessionID.equals(""))
+                                                    result+="\nSessionID："+sessionID;
+                                            }
+                                        }
+                                    }
+                                    Log.i(TAG, "SessionID :" + sessionID);
                                 }
-                                msg.obj=result;
-                                handler.sendMessage(msg);
+                                    msg.obj = result;
+                                    handler.sendMessage(msg);
                             }
 
                             //返回失败
@@ -367,9 +451,9 @@ public class RetrofitDemo {
 
     //Retrofit下载文件
     public static void startDownload(String downloadUrl, final String filename, final Handler handler) {
-        HashMap<String,String> urlmap=Util.decodeUrl(downloadUrl);
-        String baseUrl="http://"+urlmap.get("BaseUrl")+"/";
-        String urlPath=urlmap.get("PathUrl");
+        HashMap<String, String> urlmap = Util.decodeUrl(downloadUrl);
+        String baseUrl = "http://" + urlmap.get("BaseUrl") + "/";
+        String urlPath = urlmap.get("PathUrl");
         //构建Retrofit
         Retrofit retrofit = new Retrofit.Builder()
                 .baseUrl(baseUrl)
@@ -378,7 +462,7 @@ public class RetrofitDemo {
                 .build();
         //关联Retrofit
         DownloadService downloadService = retrofit.create(DownloadService.class);
-        Call<ResponseBody> dowloadCall = downloadService.downloadFile(urlPath,filename);
+        Call<ResponseBody> dowloadCall = downloadService.downloadFile(urlPath, filename);
 
         /*对应可替换方法，url要全部手动注入
         Call<ResponseBody> dowloadCall = downloadService.downloadFile(downloadUrl+ "?filename=" + filename);*/
@@ -404,16 +488,15 @@ public class RetrofitDemo {
                                     .equals(Environment.MEDIA_MOUNTED);//判断sd卡是否存在
                             if (sdCardExist) {
                                 sdDir = Environment.getExternalStorageDirectory();//获取跟目录
-                            }else
-                            {
+                            } else {
                                 sdDir = Environment.getDataDirectory();
                             }
 
                             final File file = new File(sdDir.toString() + "/" + filename);
-                            InputStream is ;
+                            InputStream is;
                             byte[] buf = new byte[2048];
                             int len;
-                            FileOutputStream fos ;
+                            FileOutputStream fos;
 
                             long total = response.body().contentLength();
                             long current = 0;
@@ -466,9 +549,9 @@ public class RetrofitDemo {
 
     //Retrofit上传文件
     public static void startUpload(final int method, String uploadUrl, String filepath, final Handler handler) {
-        HashMap<String,String> urlmap=Util.decodeUrl(uploadUrl);
-        String baseUrl="http://"+urlmap.get("BaseUrl")+"/";
-        String urlPath=urlmap.get("PathUrl");
+        HashMap<String, String> urlmap = Util.decodeUrl(uploadUrl);
+        String baseUrl = "http://" + urlmap.get("BaseUrl") + "/";
+        String urlPath = urlmap.get("PathUrl");
         Call<ResponseBody> uploadCall = null;
         File file = new File(filepath);
         final String filename = filepath.substring(filepath.lastIndexOf("/") + 1);
@@ -489,7 +572,7 @@ public class RetrofitDemo {
             //PUT,直接将file构建的requetBody传入接口Call方法
             case 1:
                 methodName = "octet-stream";
-                uploadCall = uploadService.uploadFileWithRequestBody(urlPath,filename, filebody);
+                uploadCall = uploadService.uploadFileWithRequestBody(urlPath, filename, filebody);
                 break;
             //POST,将file构建的requetBody进一步构建成MultipartBody，然后将其传入接口Call方法
             case 2:
@@ -499,13 +582,13 @@ public class RetrofitDemo {
                         .addFormDataPart("file", filename, filebody)
                         .build();
 
-                uploadCall = uploadService.uploadFileWithMultiPartBody(urlPath,multipartBody);
+                uploadCall = uploadService.uploadFileWithMultiPartBody(urlPath, multipartBody);
                 break;
             //DELETE,将file构建的requetBody进一步构建成MultipartBody.Part，然后将其传入接口Call方法
             case 3:
                 methodName = "multipart(commons-fileupload";
                 MultipartBody.Part part = MultipartBody.Part.createFormData("file", filename, filebody);
-                uploadCall = uploadService.uploadFileWithPart(urlPath,part);
+                uploadCall = uploadService.uploadFileWithPart(urlPath, part);
                 break;
         }
         //发送服务器访问请求，异步接收服务器响应
