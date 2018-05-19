@@ -8,6 +8,15 @@
  * 只支持同步，异步可以与AsyncTask协同来完成
  * httpURLConnection文件下载，就是用GET方法将从服务器获得的网络输入流用文件输出流方式写成本地文件
  * httpURLConnection文件上传，就是用POST或PUT方法将本地文件作为文件输入流，读入后通过网络输出流发往服务器
+ *
+ * Cookie(在sendGet中演示):可以通过connection.getHeaderFields()对Response的Header进行获取和解析，但解析比较繁琐。
+ * 直接用Android CookieManager的getCookieStore().get(uri)简洁一些。发送Cookie就直接使用 connection.setRequestProperty("Cookie", cookieString)
+ * 即可，其中cookieString格式要符合下列Cookie规则（其中value格式为name=value）：
+ * --Set-Cookie:value [ ;expires=date][ ;domain=domain][ ;path=path][ ;Httponly][ ;secure]--服务器端
+ * --Cookie : value或Cookie:value1 ; value2 ; name1=value1--客户端
+ * 多键值对可以用多value的 Cookie（服务器就要多个Set-Cookie行）方式，也可以在单value的Cookie中这样定义：name=key1=value1&key2=value2......
+ *
+ * Session(在sendPut中演示):用上述方法在Cookie中接收和发送sessionID即可，格式为：JSESSIONID=149023982C1E1F2B78B92E03809B1779，其代表的Attribute内容只在服务器可见。
  * <p>
  * <br/>Copyright (C), 2017-2018, Steve Chang
  * <br/>This program is protected by copyright laws.
@@ -18,6 +27,7 @@
  * @version 1.0
  */
 package org.xottys.network.http;
+
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
@@ -25,9 +35,6 @@ import android.util.Log;
 
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -41,17 +48,29 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
-import java.io.StringWriter;
+import java.net.CookieHandler;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
+import java.net.HttpCookie;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 
 public class HttpURLConnectionDemo {
     private static final String TAG = "http";
+    static CookieManager manager;
+    static private String myCookie = "";
+    static private String sessionID = "";
+
     /**
      * 向指定URL发送GET方法的请求
      *
@@ -61,36 +80,94 @@ public class HttpURLConnectionDemo {
     public static String sendGet(String baseUrl, String params) {
         String result = "";
         BufferedReader in = null;
+        StringBuilder cookieBuilder = new StringBuilder();
+        String divider = "";
+        myCookie="";
+        //用于接收和保存Cookie，定义后服务器传来的Cookie就自动放到CookieManager中了
+        if (manager == null) {
+            // 创建一个默认的 CookieManager
+            manager = new CookieManager();
+            // 将规则改掉，接受所有的 Cookie
+            manager.setCookiePolicy(CookiePolicy.ACCEPT_ALL);
+            // 保存这个定制的 CookieManager
+            CookieHandler.setDefault(manager);
+        }
+
         try {
             String url = baseUrl + "?" + params;
             URL realUrl = new URL(url);
+            URI uri = new URI(baseUrl);
+
             // 打开和URL之间的连接
             HttpURLConnection connection = (HttpURLConnection) realUrl.openConnection();
             // 设置通用的请求属性
             connection.setRequestProperty("accept", "*/*");
             connection.setRequestProperty("connection", "Keep-Alive");
             connection.setRequestProperty("Content-Type", "text/plain");
+
+            //对服务器传来Cookie进行解析和处理
+            List<HttpCookie> httpCookies = manager.getCookieStore().get(uri);
+            Log.i(TAG, "CookieManager Cookie :" + httpCookies.toString());
+
+            if (httpCookies.size() > 0) {
+                for (HttpCookie hcookie : httpCookies) {
+                    if (hcookie != null & !hcookie.hasExpired()) {
+                        cookieBuilder.append(divider);
+                        divider = ";";
+                        cookieBuilder.append(hcookie.getName());
+                        cookieBuilder.append("=");
+                        cookieBuilder.append(hcookie.getValue());
+                    }
+                }
+                //将有效Cookie再次发送给服务器
+                connection.setRequestProperty("Cookie", cookieBuilder.toString());
+
+                Log.i(TAG, "Cookie to server: " + cookieBuilder.toString());
+            }
+
             //设置连接主机超时
             connection.setConnectTimeout(3000);
             //设置从主机读取数据超时
             connection.setReadTimeout(3000);
+
+            /*获取request中的Cookie
+            Map<String, List<String>> mapcookie= manager.get(uri,connection.getRequestProperties());
+            Log.i(TAG, "Request Cookie： " + mapcookie);*/
+
             //建立实际的连接
             connection.connect();
             int responseCode = connection.getResponseCode();
             if (responseCode >= 400) {
                 result = "HttpURLConnection服务器连接故障1:" + responseCode;
                 Log.e(TAG, "HttpURLConnection服务器连接故障1:" + responseCode);
-            }else{
+            } else {
                 // 定义BufferedReader输入流来读取URL的响应
                 in = new BufferedReader(
                         new InputStreamReader(connection.getInputStream()));
                 String line;
                 while ((line = in.readLine()) != null) {
-                    result += line ;
+                    result += line;
                 }
+
+                //从服务器响应Header中收取其传来Cookie，需要另行解析
+                Map<String, List<String>> maps = connection.getHeaderFields();
+                List<String> cookielist = maps.get("Set-Cookie");
+                if (cookielist != null && cookielist.size() != 0) {
+                    Iterator<String> it = cookielist.iterator();
+                    StringBuffer sbu = new StringBuffer();
+                    while (it.hasNext()) {
+                        sbu.append(it.next() + ";");
+                    }
+                    myCookie = sbu.toString();
+                }
+                Log.i(TAG, "Header Cookie: " + myCookie);
+
+                /*另一种读取Response 中Cookie的方法
+                Map<String, List<String>> mapcookie= manager.get(uri,connection.getHeaderFields());
+                Log.i(TAG, "Response Cookie:: " + mapcookie);*/
             }
         } catch (Exception e) {
-            result="HttpURLConnection服务器连接故障3";
+            result = "HttpURLConnection服务器连接故障3";
             Log.e(TAG, "HttpURLConnection服务器连接故障3");
             e.printStackTrace();
         }
@@ -105,7 +182,8 @@ public class HttpURLConnectionDemo {
             }
         }
         Log.i(TAG, "sendGet: " + result);
-        return "（GET）"+result;
+
+        return "（GET）" + result+(myCookie.equals("")?"":"  Cookie From Server:\n"+myCookie);
     }
 
     /**
@@ -119,8 +197,10 @@ public class HttpURLConnectionDemo {
         PrintWriter out = null;
         BufferedReader in = null;
         String result = "";
+
         try {
             URL realUrl = new URL(url);
+
             // 打开和URL之间的连接
             HttpURLConnection conn = (HttpURLConnection) realUrl.openConnection();
             // 设置通用的请求属性
@@ -129,7 +209,6 @@ public class HttpURLConnectionDemo {
             conn.setRequestProperty("user-agent",
                     "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1)");
             conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-
             //发送POST请求必须设置如下两行
             conn.setDoOutput(true);
             conn.setDoInput(true);
@@ -147,21 +226,21 @@ public class HttpURLConnectionDemo {
 
             int responseCode = conn.getResponseCode();
             if (responseCode >= 400) {
-                result= "HttpURLConnection服务器连接故障1:" + responseCode;
+                result = "HttpURLConnection服务器连接故障1:" + responseCode;
                 Log.e(TAG, "HttpURLConnection服务器连接故障1:" + responseCode);
             } else {
-            //定义BufferedReader输入流来读取URL的响应
-            in = new BufferedReader(
-                    new InputStreamReader(conn.getInputStream()));
-            String line;
-            while ((line = in.readLine()) != null) {
-                result += line ;
+                //定义BufferedReader输入流来读取URL的响应
+                in = new BufferedReader(
+                        new InputStreamReader(conn.getInputStream()));
+                String line;
+                while ((line = in.readLine()) != null) {
+                    result += line;
+                }
             }
-        } }
-        catch (IOException e) {
-            result="HttpURLConnection服务器连接故障3";
+        } catch (IOException e1) {
+            result = "HttpURLConnection服务器连接故障3";
             Log.e(TAG, "HttpURLConnection服务器连接故障3");
-            e.printStackTrace();
+            e1.printStackTrace();
         }
         // 使用finally块来关闭输出流、输入流
         finally {
@@ -177,7 +256,7 @@ public class HttpURLConnectionDemo {
             }
         }
         Log.i(TAG, "sendPost: " + result);
-        return "（POST）"+result;
+        return "（POST）" + result;
     }
 
     /**
@@ -192,8 +271,17 @@ public class HttpURLConnectionDemo {
         BufferedReader in = null;
         String result = "", resultCode, resultMsg = "";
         JSONObject jsonObject;
+        if (manager == null) {
+            // 创建一个默认的 CookieManager
+            manager = new CookieManager();
+            // 将规则改掉，接受所有的 Cookie
+            manager.setCookiePolicy(CookiePolicy.ACCEPT_ALL);
+            // 保存这个定制的 CookieManager
+            CookieHandler.setDefault(manager);
+        }
         try {
             URL realUrl = new URL(url);
+            URI uri = new URI(url);
             // 打开和URL之间的连接
             HttpURLConnection conn = (HttpURLConnection) realUrl.openConnection();
             // 设置通用的请求属性
@@ -202,6 +290,9 @@ public class HttpURLConnectionDemo {
             conn.setRequestProperty("user-agent",
                     "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1)");
             conn.setRequestProperty("Content-Type", "application/json");
+            Log.i(TAG, "SessionID :---" + sessionID);
+            if (!sessionID.equals("")) conn.setRequestProperty("Cookie", sessionID);
+
             conn.setRequestMethod("PUT");
             conn.setDoOutput(true);
             conn.setDoInput(true);
@@ -209,6 +300,11 @@ public class HttpURLConnectionDemo {
             conn.setConnectTimeout(3000);
             //设置从主机读取数据超时
             conn.setReadTimeout(3000);
+
+            //显示请求Header中Cookie内容
+            Map<String, List<String>> mapcookie= manager.get(uri,conn.getRequestProperties());
+            Log.i(TAG, "Request Cookie： " + mapcookie);
+
             conn.connect();
 
             //发送json数据给服务器
@@ -236,17 +332,35 @@ public class HttpURLConnectionDemo {
                 } catch (JSONException e) {
                     e.printStackTrace();
                 }
-                resultMsg= resultMsg+"\n"+result;
+                resultMsg = resultMsg + "\n" + result;
+
+                //对服务器传来Cookie进行解析和处理
+                List<HttpCookie> httpCookies = manager.getCookieStore().get(uri);
+                Log.i(TAG, "CookieManager Cookie :" + httpCookies.toString());
+                if (httpCookies.size() > 0) {
+                    for (HttpCookie hcookie : httpCookies) {
+                        if (hcookie != null & !hcookie.hasExpired()) {
+                            if (hcookie.getName().equals("JSESSIONID"))
+                                sessionID=hcookie.getValue();
+                                if (!sessionID.equals(""))
+                                resultMsg+="\nSessionID："+sessionID;
+                        }
+                    }
+                }
+                Log.i(TAG, "SessionID :" + sessionID);
             }
-        }catch (IOException e1) {
-            resultMsg="HttpURLConnection服务器连接故障3";
+        } catch (IOException e1) {
+            resultMsg = "HttpURLConnection服务器连接故障3";
             Log.e(TAG, "HttpURLConnection服务器连接故障3");
             e1.printStackTrace();
-        }catch (JSONException e2) {
-            resultMsg="HttpURLConnection数据解析错误，Json解析失败";
+        } catch (JSONException e2) {
+            resultMsg = "HttpURLConnection数据解析错误，Json解析失败";
             Log.e(TAG, "HttpURLConnection数据解析错误，Json解析失败");
             e2.printStackTrace();
+        }catch (URISyntaxException e3) {
+            e3.printStackTrace();
         }
+
         // 使用finally块来关闭输出流、输入流
         finally {
             try {
@@ -262,7 +376,7 @@ public class HttpURLConnectionDemo {
         }
 
         Log.i(TAG, "sendPut: " + resultMsg);
-        return "（PUT）"+resultMsg;
+        return "（PUT）" + resultMsg;
     }
 
     /**
@@ -272,7 +386,7 @@ public class HttpURLConnectionDemo {
      * @return URL所代表远程资源的响应
      */
     public static String sendDelete(String baseUrl, String params) {
-        PrintWriter out ;
+        PrintWriter out;
         String result = "";
         InputStream in = null;
         Message msg = Message.obtain();
@@ -298,21 +412,21 @@ public class HttpURLConnectionDemo {
             out.flush();
             int responseCode = connection.getResponseCode();
             if (responseCode >= 400) {
-                result = "HttpURLConnection服务器连接故障1:"+responseCode;
-                Log.e(TAG, "HttpURLConnection服务器连接故障1:"+responseCode);
+                result = "HttpURLConnection服务器连接故障1:" + responseCode;
+                Log.e(TAG, "HttpURLConnection服务器连接故障1:" + responseCode);
             } else {
 
                 in = connection.getInputStream();
                 ArrayList<HashMap> results = Util.readxmlByDom(in);
-                if (results.size() != 0){
+                if (results.size() != 0) {
                     for (HashMap rs : results) {
-                            result=rs.get("message").toString();
+                        result = rs.get("message").toString();
                     }
-            }
+                }
                 result += Util.xmlString;
             }
         } catch (Exception e) {
-            result="HttpURLConnection服务器连接故障3";
+            result = "HttpURLConnection服务器连接故障3";
             Log.e(TAG, "HttpURLConnection服务器连接故障3");
             e.printStackTrace();
         }
@@ -328,7 +442,7 @@ public class HttpURLConnectionDemo {
         }
         Log.i(TAG, "sendDelete: " + result);
 
-        return "（DELETE）"+result;
+        return "（DELETE）" + result;
     }
 
 
@@ -360,19 +474,18 @@ public class HttpURLConnectionDemo {
                 result = URLDecoder.decode(httpURLConnection.getHeaderField("result"), "UTF-8");
                 if (result.equals("下载成功")) {
                     //准备将下载的文件写到SDCard中
-                    File sdDir = null;
+                    File sdDir ;
                     boolean sdCardExist = Environment.getExternalStorageState()
                             .equals(Environment.MEDIA_MOUNTED);//判断sd卡是否存在
                     if (sdCardExist) {
                         sdDir = Environment.getExternalStorageDirectory();//获取SD卡根目录
-                    }else
-                    {
-                        sdDir =Environment.getDataDirectory();
+                    } else {
+                        sdDir = Environment.getDataDirectory();
                     }
 
-                    String filepath="";
-                    if(sdDir!=null)
-                       filepath = sdDir.toString() + "/AndroidDemo/download/" + filename;
+                    String filepath = "";
+                    if (sdDir != null)
+                        filepath = sdDir.toString() + "/AndroidDemo/download/" + filename;
                     File file = new File(filepath);
                     File fileParent = file.getParentFile();
                     if (!fileParent.exists()) {
@@ -398,7 +511,7 @@ public class HttpURLConnectionDemo {
                     out.close();
                 }
 
-                    result = "HttpURLConnection" + result + ":" + filename;
+                result = "HttpURLConnection" + result + ":" + filename;
                 Log.i(TAG, result);
             }
         } catch (MalformedURLException e) {
@@ -425,7 +538,7 @@ public class HttpURLConnectionDemo {
         DataInputStream in = null;
         OutputStream out = null;
         HttpURLConnection conn = null;
-        BufferedReader ins ;
+        BufferedReader ins;
         Message msg = Message.obtain();
         msg.what = 0x06;
 
@@ -524,7 +637,7 @@ public class HttpURLConnectionDemo {
      *
      * @param actionUrl：上传的路径
      * @param filepath：需要上传的全路径文件名
-     * @param handler: 向主线程返回UI信息的handler
+     * @param handler:             向主线程返回UI信息的handler
      */
     public static void uploadFileByForm(String actionUrl, String filepath, Handler handler, int serverType) {
         String end = "\r\n";
@@ -536,8 +649,8 @@ public class HttpURLConnectionDemo {
         InputStreamReader inputStreamReader = null;
         BufferedReader reader = null;
         StringBuffer resultBuffer;
-        String tempLine ;
-        String result ;
+        String tempLine;
+        String result;
         Message msg = Message.obtain();
         msg.what = 0x06;
         try {
@@ -590,7 +703,7 @@ public class HttpURLConnectionDemo {
                 msg.obj = result;
                 Log.e(TAG, "HttpURLConnection服务器连接故障1");
             } else {
-               //收取服务器返回信息
+                //收取服务器返回信息
                 inputStream = httpURLConnection.getInputStream();
                 inputStreamReader = new InputStreamReader(inputStream);
                 reader = new BufferedReader(inputStreamReader);
@@ -598,7 +711,7 @@ public class HttpURLConnectionDemo {
                 while ((tempLine = reader.readLine()) != null) {
                     resultBuffer.append(tempLine);
                 }
-                result=resultBuffer.toString();
+                result = resultBuffer.toString();
                 if (result.equals("上传成功")) {
                     //将返回信息发往UI线程
                     msg.arg1 = 0;
@@ -648,28 +761,4 @@ public class HttpURLConnectionDemo {
             handler.sendMessage(msg);
         }
     }
-
-
-    /**
-     * @param url 远程服务器的URL
-     * @method getSessionID
-     * @description 执行从cookie获取会话sessionID的方法，用于保持与服务器的会话
-     */
-    public String getSessionID(URL url) {
-        String sessionID;
-        try {
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            String cookieValue = connection.getHeaderField("set-cookie");
-            if (cookieValue != null) {
-                sessionID = cookieValue.substring(0, cookieValue.indexOf(";"));
-            } else {
-                sessionID = "";
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-            sessionID = "";
-        }
-        return sessionID;
-    }
-
 }
